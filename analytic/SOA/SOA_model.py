@@ -16,11 +16,6 @@ c = 299792458.0           # m/s
 # SOA parameters from Li et al. (2008)
 # ============================================================
 
-A = 2.0e8                 # 1/s
-B = 3.83e-17              # m^3/s
-C = 4.0e-41               # m^6/s
-
-
 
 n0 = 1.0e24               # m^-3
 
@@ -43,7 +38,7 @@ d = 0.2e-6                # active-region thickness [m]
 Nz = 100
 
 z = np.linspace(0.0, L, Nz)
-dz = z[1] - z[0]
+# dz = z[1] - z[0]
 
 # Optical wavelengths
 lambda_pump = 1551e-9
@@ -72,7 +67,7 @@ probe_input_power = 40e-6     # W
 
 
 # ============================================================
-# Gain model from Li et al.
+# Modal gain model
 # ============================================================
 
 def modal_gain(
@@ -101,29 +96,86 @@ def modal_gain(
         - a1 * (wavelength - lambda_n) ** 2
     )
 
+# ============================================================
+# Recombination rates
+# ============================================================
+
+def R_defect(
+    n,
+    A = 2.0e8,  # 1/s
+):
+    return A * n
+
+def R_spontaneous_radiative(
+    n,
+    B = 3.83e-17    # m^3/s
+):
+    return B * n**2
+
+def R_auger(
+    n,
+    C = 4.0e-41 # m^6/s
+):
+    return C * n**3
+
+def R_tot(
+    n,
+    A = 2.0e8,      # 1/s
+    B = 3.83e-17,   # m^3/s
+    C = 4.0e-41,    # m^6/s
+):
+    R_tot = (
+        R_defect(n,A)
+        + R_spontaneous_radiative(n,B)
+        + R_auger(n, C)
+    )
+    return R_tot
+
 
 # ============================================================
 # Optical propagation
 # ============================================================
 
-def propagate_power(P_in, n, wavelength):
+# NOTE: asume que hay una única wavelength. 
+# Si quiero propagar señales que sean superposicion de varias
+# longitudes de onda, esta funcion no me lo permite.
+
+def propagate_power(
+    P_in, 
+    n, 
+    wavelength, 
+    z,
+    # TODO: recibir params del SOA por argumento y no leyendo vars. globales
+    B = 3.83e-17,    # m^3/s
+):
     """
     Propagate a forward travelling optical signal
     through the SOA for the current carrier-density profile.
     """
 
-    P = np.empty(Nz)
+    # Ec. dif. de la forma: y' + f0 * y = g0, con f0 y g0 ctes.
+    # Solucion:
+    # y = [y(0) - g0/f0 ] * exp(-f0*z) + g0/f0
+
+    # y = P(z)
+    # f0 = -(gm-alpha)   (asumido constante para dz suficientemente chico)
+    # g0 = W*d*B*n^2*(hc/lambda)beta_eff/2  (asumido constante para dz suficientemente chico)
+
+
+    P = np.zeros_like(z)
     P[0] = P_in
+    dz = (z[-1] - z[0]) / (len(z) - 1)
 
     for i in range(Nz - 1):
 
-        g = modal_gain(n[i], wavelength)
+        gm = modal_gain(n[i], wavelength)    # TODO: esto no funciona si se ensancha un poco el espectro
 
-        # dP/dz = (g - alpha) P
-        P[i + 1] = P[i] * np.exp(
-            (g - alpha) * dz
-        )
+        f0 = -(gm - alpha)
+        g0 = beta_eff/2 * W*d*B*n[i]*n[i]*h*c/wavelength
 
+        P[i + 1] = (P[i] - g0/f0) * np.exp(-f0 * dz) + g0/f0
+
+    # TODO: agregar efecto propagacion inversa
     return P
 
 
@@ -140,13 +192,15 @@ def dn_dt(t, n):
     P_pump = propagate_power(
         pump_input_power(t),
         n,
-        lambda_pump
+        lambda_pump,
+        z
     )
 
     P_probe = propagate_power(
         probe_input_power,
         n,
-        lambda_probe
+        lambda_probe,
+        z
     )
 
     # Total stimulated-emission contribution
@@ -154,6 +208,7 @@ def dn_dt(t, n):
     # For the present simplified model we use the
     # pump and probe powers directly rather than
     # integrating over a full optical spectrum.
+    
     # TODO: integrate over spectrum.
 
     g_pump = modal_gain(n, lambda_pump)
@@ -176,11 +231,7 @@ def dn_dt(t, n):
     ) / (W * d)
 
     # Recombination
-    recombination = (
-        A * n
-        + B * n**2
-        + C * n**3
-    )
+    recombination = R_tot(n)    # TODO: make dn_dt receive parameters for A, B and C and forward them to R_tot
 
     # Electrical injection
     injection = I / (q * W * d * L)
@@ -199,7 +250,8 @@ def steady_state_derivative(t, n):
     P_probe = propagate_power(
         probe_input_power,
         n,
-        lambda_probe
+        lambda_probe,
+        z
     )
 
     g_probe = modal_gain(n, lambda_probe)
@@ -210,11 +262,7 @@ def steady_state_derivative(t, n):
         g_probe * P_probe / E_probe
     ) / (W * d)
 
-    recombination = (
-        A * n
-        + B * n**2
-        + C * n**3
-    )
+    recombination = R_tot(n) # TODO: make steady_state_derivative receive parameters for A, B and C and forward them to R_tot
 
     injection = I / (q * W * d * L)
 
@@ -276,13 +324,15 @@ for j, t in enumerate(t_eval):
     Pp = propagate_power(
         pump_input_power(t),
         n,
-        lambda_pump
+        lambda_pump,
+        z
     )
 
     Ps = propagate_power(
         probe_input_power,
         n,
-        lambda_probe
+        lambda_probe,
+        z
     )
 
     pump_output[j] = Pp[-1]
