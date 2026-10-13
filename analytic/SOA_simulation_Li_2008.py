@@ -57,13 +57,6 @@ class Simulation():
             atol=1e18,
         )
 
-        fig, ax = plt.subplots()
-        ax.plot(steady.t, steady.y[0,:], label="z=0")
-        ax.plot(steady.t, steady.y[-1,:], label="z=L")
-        ax.legend()
-        ax.grid()
-
-
         # Use steady state as initial condition for main simulation
         n_steady_state = steady.y[:, -1]
 
