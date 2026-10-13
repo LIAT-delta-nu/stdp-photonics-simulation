@@ -1,6 +1,7 @@
 import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass, astuple
+from .toml_config import toml_config
 
 # ============================================================
 # Modal gain calc
@@ -34,34 +35,34 @@ def _modal_gain(
 # Recombination rates
 # ============================================================
 
-def R_defect(
+def _R_defect(
     n,
     A = 2.0e8,  # 1/s
 ):
     return A * n
 
-def R_spontaneous_radiative(
+def _R_spontaneous_radiative(
     n,
     B = 3.83e-17    # m^3/s
 ):
     return B * n**2
 
-def R_auger(
+def _R_auger(
     n,
     C = 4.0e-41 # m^6/s
 ):
     return C * n**3
 
-def R_tot(
+def _R_tot(
     n,
     A = 2.0e8,      # 1/s
     B = 3.83e-17,   # m^3/s
     C = 4.0e-41,    # m^6/s
 ):
     R_tot = (
-        R_defect(n,A)
-        + R_spontaneous_radiative(n,B)
-        + R_auger(n, C)
+        _R_defect(n,A)
+        + _R_spontaneous_radiative(n,B)
+        + _R_auger(n, C)
     )
     return R_tot
 
@@ -69,16 +70,17 @@ def R_tot(
 # SOA description dataclasses
 # ============================================================
 
-@dataclass()
-class SoaCondition:
+@toml_config(section="soa_conditions")
+@dataclass
+class SoaConditions:
     I: float = 87e-3
 
-
+@toml_config(section="soa_material")
 @dataclass()
 class SoaMaterial:
     # Transparency
     n0: float = 1.0e24       # Transparency carrier concentration, m^-3
-    lambda_0: float = 1.585e-6  # Transparency wavelength, m
+    lambda_0: float = 1.585e-6  # Transparency wavelength, m     # DEPENDS ON SOA LENGTH!!!!
 
     # Modal gain parameters
     a0: float = 4.5e-21      # Modal gain parameter, m^2
@@ -100,21 +102,21 @@ class SoaMaterial:
 
 
     def R_defect(self, n):
-        return R_defect(n, self.A)
+        return _R_defect(n, self.A)
 
 
     def R_spontaneous_radiative(self, n):
-        return R_spontaneous_radiative(n, self.B)
+        return _R_spontaneous_radiative(n, self.B)
 
 
     def R_auger(self, n):
-        return R_auger(n, self.C)
+        return _R_auger(n, self.C)
 
 
     def R_tot(self, n):
-        return R_tot(n, self.A, self.B, self.C)
+        return _R_tot(n, self.A, self.B, self.C)
 
-
+@toml_config(section="soa_dimensions")
 @dataclass()
 class SoaDimensions:
     W: float    # Active region width
@@ -161,14 +163,17 @@ def propagate_power(
     z,
     material : SoaMaterial,
     dims : SoaDimensions,
-    # TODO: recibir params del SOA por argumento y no leyendo vars. globales
-    # B = 3.83e-17,    # m^3/s
-    # alpha = 2e3,      # m^-1
-    # beta_eff = 7.3e-3,
+    forward : bool = True,
 ):
     """
-    Propagate a forward travelling optical signal
+    Propagate a travelling optical signal
     through the SOA for the current carrier-density profile.
+
+    forward : bool
+        If True, P_in is propagated from z[0] to z[Nz-1], where Nz=len(z)
+        If False, P_in is propagated from z[Nz-1] to z[0].
+    returns:
+        array P of the same len as z, where P[i] is the propagated power in z[i].
     """
 
     # Ec. dif. de la forma: y' + f0 * y = g0, con f0 y g0 ctes.
@@ -184,14 +189,20 @@ def propagate_power(
     P[0] = P_in
     dz = (z[-1] - z[0]) / (len(z) - 1)
 
-    for i in range(len(z) - 1):
+    if not forward:
+        n = np.flip(n)
 
-        gm = material.modal_gain(n[i], wavelength)    # TODO: esto no funciona si se ensancha un poco el espectro
+    for i, n_i in enumerate(n[:-1]):
+
+        gm = material.modal_gain(n_i, wavelength)    # TODO: esto no funciona si se ensancha un poco el espectro
 
         f0 = -(gm - material.alpha)
-        g0 = material.beta_eff/2 * dims.area()*material.B*n[i]*n[i]*h*c/wavelength    # TODO: y si tengo un pulso con espectro ancho? que hago con eso aca
+        g0 = material.beta_eff/2 * dims.area()*material.B*n_i*n_i*h*c/wavelength    # TODO: y si tengo un pulso con espectro ancho? que hago con eso aca
 
         P[i + 1] = (P[i] - g0/f0) * np.exp(-f0 * dz) + g0/f0
+
+    if not forward:
+        P = np.flip(P)
 
     return P
 
@@ -203,10 +214,11 @@ def propagate_power(
 def dn_dt(
     t, 
     n,
-    condition: SoaCondition,
+    condition: SoaConditions,
     material: SoaMaterial,
     dims: SoaDimensions,
-    input_signals: list[SoaInputSignal],
+    input_signals_forward: list[SoaInputSignal],
+    input_signals_backward: list[SoaInputSignal],
     z: np.ndarray
 ):
     """
@@ -228,16 +240,30 @@ def dn_dt(
     # integrating over a full optical spectrum.
     # TODO: integrate over spectrum.
     stimulated = np.zeros_like(n)
-    for input_signal in input_signals:
-        gm = material.modal_gain(n, input_signal.lamda)
-        E_photon = h * c / input_signal.lamda
+    for input_signal_forward in input_signals_forward:
+        gm = material.modal_gain(n, input_signal_forward.lamda)
+        E_photon = h * c / input_signal_forward.lamda
         stimulated += propagate_power(
-            input_signal.power(t),
+            input_signal_forward.power(t),
             n,
-            input_signal.lamda,
+            input_signal_forward.lamda,
             z,
             material,
-            dims
+            dims,
+            forward=True,
+        ) * gm / E_photon / dims.area()
+    
+    for input_signal_backward in input_signals_backward:
+        gm = material.modal_gain(n, input_signal_backward.lamda)
+        E_photon = h * c / input_signal_backward.lamda
+        stimulated += propagate_power(
+            input_signal_backward.power(t),
+            n,
+            input_signal_backward.lamda,
+            z,
+            material,
+            dims,
+            forward=False,
         ) * gm / E_photon / dims.area()
 
     return injection - recombination - stimulated

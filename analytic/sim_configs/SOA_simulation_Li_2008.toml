@@ -1,0 +1,75 @@
+[case_a]
+[case_a.soa_conditions]
+I=72e-3
+
+[case_a.soa_material]
+# Transparency
+n0 = 1.0e24          # Transparency carrier concentration, m^-3
+lambda_0 = 1.585e-6  # Transparency wavelength, m
+
+# Modal gain parameters
+a0 = 4.5e-21         # Modal gain parameter, m^2
+a1 = 1.5e18          # Modal gain parameter, m^-3
+a2 = 5.0e-33         # Modal gain parameter, m^4
+
+# Carrier recombination coefficients
+A = 2.0e8             # Defect recombination, s^-1
+B = 3.83e-17          # Spontaneous radiative recombination, m^3/s
+C = 4.0e-41           # Auger recombination, m^6/s
+
+# Loss and spontaneous emission
+alpha = 1.4e4         # Intrinsic material loss, m^-1
+beta_eff = 7.3e-3     # Effective spontaneous emission factor
+
+[case_a.soa_dimensions]
+L=800e-6
+d=0.2e-6    # TODO: inventado por mi. No encontre un valor en el paper
+W=1e-6
+
+######################
+
+[case_aa]
+[case_aa.soa_conditions]
+[case_aa.soa_material]
+[case_aa.soa_dimensions]
+d=0.1e-6    # Tiene mas ganancia que el caso a
+
+######################
+
+[case_ab]
+[case_ab.soa_conditions]
+[case_ab.soa_material]
+[case_ab.soa_dimensions]
+d=0.22e-6
+
+######################
+
+[case_b]
+[case_b.soa_conditions]
+I=87.6e-3
+[case_b.soa_material]
+lambda_0 = 1.585e-6  # Transparency wavelength, m
+[case_b.soa_dimensions]
+L=1200e-6
+
+######################
+
+[case_c]
+[case_c.soa_conditions]
+I=106.5e-3
+[case_c.soa_material]
+lambda_0 = 1.595e-6  # Transparency wavelength, m
+[case_c.soa_dimensions]
+L=1600e-6
+
+######################
+
+[case_d]
+[case_d.soa_conditions]
+I=120.8e-3
+[case_d.soa_material]
+lambda_0 = 1.6e-6  # Transparency wavelength, m
+[case_d.soa_dimensions]
+L=2000e-6
+
+
