@@ -239,6 +239,11 @@ def dn_dt(
     # pump and probe powers directly rather than
     # integrating over a full optical spectrum.
     # TODO: integrate over spectrum.
+    # BUG: current algorithm does not consider ASE in wavelengths where 
+    # there are no signals, but it does consider the ASE for the wavelengths 
+    # where there is a signal.
+    # This is not correct.
+
     stimulated = np.zeros_like(n)
     for input_signal_forward in input_signals_forward:
         gm = material.modal_gain(n, input_signal_forward.lamda)
