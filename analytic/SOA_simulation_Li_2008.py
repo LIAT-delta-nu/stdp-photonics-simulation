@@ -3,9 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from dataclasses import dataclass, astuple
+from pathlib import Path
 
 import devices.SOA_model_Li_2008 as soa
 import signals.signals as signals
+from plots import plot_carrier_density, plot_probe_gain_dB
 
 CASES = (
     "case_a", 
@@ -27,7 +29,7 @@ class Simulation():
     input_signals_backward_steady_state: tuple[soa.SoaInputSignal]
     n_initial_guess: float
     Nz: int
-    t_eval: tuple[float]
+    t_span: tuple[float]
 
 
     def z(self):
@@ -53,8 +55,8 @@ class Simulation():
                 z
             ),
             method="BDF",
-            rtol=1e-5,
-            atol=1e18,
+            rtol=1e-10,
+            atol=1e0,
         )
 
         # Use steady state as initial condition for main simulation
@@ -63,9 +65,9 @@ class Simulation():
         # Main simulation
         solution = solve_ivp(
             fun=soa.dn_dt,
-            t_span=(self.t_eval[0], self.t_eval[-1]),
+            t_span=self.t_span,
             y0=n_steady_state,    # start from steady state
-            t_eval=self.t_eval,
+            # t_eval=self.t_eval,
             args=(
                 self.conditions,
                 self.material,
@@ -75,8 +77,8 @@ class Simulation():
                 z
             ),
             method="BDF",
-            rtol=1e-5,
-            atol=1e18,
+            rtol=1e-10,
+            atol=1e0,
         )
         return solution
 
@@ -89,20 +91,21 @@ def main():
     # Input signals
     ## Pump
     lambda_pump = 1551e-9
-    pump_power_peak = 5e-3
+    pump_power_peak = 0
+    # pump_power_peak = 5e-3
     pump_pulse_width = 65e-12   # FWHM
     pump_t_peak = 200e-12
 
     ## Probe
-    lambda_probe = 1550e-9
-    probe_power = 40e-6     # W
+    lambda_probe = 1580e-9
+    probe_power_input = 40e-6     # W
 
     # Simulation params
     Nz = 100
 
     Nt = 1000
     t_start = 0.0
-    t_end = 2.0e-9
+    t_end = 3e-9
     t_eval = np.linspace(
         t_start,
         t_end,
@@ -119,7 +122,7 @@ def main():
     ## Probe (backwards)
     probe_signal : soa.SoaInputSignal = soa.SoaInputSignal(
         lamda = lambda_probe,
-        power = lambda t: probe_power
+        power = lambda t: probe_power_input
     )
 
 
@@ -131,88 +134,129 @@ def main():
         input_signals_backward=(probe_signal,),
         input_signals_backward_steady_state=(probe_signal,),
         input_signals_forward=(pump_signal,),
+        # input_signals_forward=(),
         input_signals_forward_steady_state=(),
         n_initial_guess=3e24,   # TODO: change n initial guess in a case by case basis
         Nz=Nz,
-        t_eval=t_eval
+        t_span=(t_start, t_end),
     )
 
+
+
     for case in CASES:
+        print(case)
         sim.conditions.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_conditions")
         sim.material.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_material")
         sim.dims.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_dimensions")
         # sim.n_initial_guess = ... # TODO: change n initial guess in a case by case basis
+        z = sim.z()
+
+        # sim.dims.d = d
 
         solution = sim.run()
 
-        probe_output = np.empty_like(t_eval)
-        # pump_output = np.empty_like(t_eval)
-        # pump_gain = np.empty_like(t_eval)
+        # Calc. probe and pump output
+
+        t_eval = solution.t
+
+        probe_output = [
+                    soa.propagate_power(
+                    probe_signal.power(t),
+                    n,
+                    probe_signal.lamda,
+                    z,
+                    sim.material,
+                    sim.dims,
+                    forward=False,
+                )[0]
+            for n, t in zip(solution.y.T, t_eval)
+        ]
+
+        pump_output = [
+                    soa.propagate_power(
+                    pump_signal.power(t),
+                    n,
+                    pump_signal.lamda,
+                    z,
+                    sim.material,
+                    sim.dims,
+                    forward=True,
+                )[0]
+            for n, t in zip(solution.y.T, t_eval)
+        ]
 
 
-        for j, t in enumerate(t_eval):
-
-            n = solution.y[:, j]
-
-            # pump_propagation = soa.propagate_power(
-            #     pump_signal.power(t),
-            #     n,
-            #     pump_signal.lamda,
-            #     sim.z(),
-            #     sim.material,
-            #     sim.dims,
-            #     forward=True,
-            # )
-
-            probe_propagation = soa.propagate_power(
-                probe_signal.power(t),
-                n,
-                probe_signal.lamda,
-                sim.z(),
-                sim.material,
-                sim.dims,
-                forward=False,
-            )
-
-            # pump_output[j] = pump_propagation[-1]
-            probe_output[j] = probe_propagation[0]
-
-            # pump_gain[j] = ( pump_output[j]) / ( pump_signal.power(t) + 1e-50 )
-
-
-        probe_gain = probe_output/probe_power
-        # pump_gain_dB = 10.0 * np.log10(pump_gain)
-        probe_gain_dB = 10.0 * np.log10(probe_gain)
-
+        # Probe gain
+        probe_gain_dB = [10*np.log10(p/probe_signal.power(t)) for p, t in zip(probe_output, t_eval)]
+        # pump_gain_dB = [10*np.log10(p/pump_signal.power(t)) for p, t in zip(pump_output, t_eval)]
 
         # ============================================================
-        # Plot carrier density
+        # Plots
         # ============================================================
 
-        plt.figure()
-
-        plt.imshow(
-            solution.y,
-            aspect="auto",
-            origin="lower",
-            extent=[
-                t_eval[0] * 1e12,
-                t_eval[-1] * 1e12,
-                0,
-                sim.dims.L * 1e6,
-            ],
+        plot_carrier_density(
+            t_eval,
+            z,
+            solution.y
+        )
+        plot_probe_gain_dB(
+            t_eval, 
+            probe_gain_dB
         )
 
-        plt.xlabel("Time (ps)")
-        plt.ylabel("Position z (um)")
-        plt.colorbar(label="Carrier density (m$^{-3}$)")
+        # plt.plot(
+        #     lambdas*1e9,
+        #     probe_gain_db,
+        #     label=f"{case}"
+        # )
 
-        plt.title("SOA carrier-density dynamics")
+        # plt.xlabel("Wavelength (nm)")
+        # plt.ylabel("Probe gain (dB)")
+
+        # # plt.title(f"SOA gain depletion and recovery (probe at {lambda_probe*1e9:5.1f} nm)")
+
+        # plt.grid()
+
+
 
 
         # # ============================================================
         # # Plot pump 
         # # ============================================================
+
+        # pump_output[j] = pump_propagation[-1]
+        # probe_output[j] = probe_propagation[0]
+
+        # for j, t in enumerate(t_eval):
+
+        #     n = solution.y[:, j]
+
+        #     pump_propagation = soa.propagate_power(
+        #         pump_signal.power(t),
+        #         n,
+        #         pump_signal.lamda,
+        #         sim.z(),
+        #         sim.material,
+        #         sim.dims,
+        #         forward=True,
+        #     )
+
+        #     probe_propagation = soa.propagate_power(
+        #         probe_signal.power(t),
+        #         n,
+        #         probe_signal.lamda,
+        #         sim.z(),
+        #         sim.material,
+        #         sim.dims,
+        #         forward=False,
+        #     )
+
+        #     pump_output[j] = pump_propagation[-1]
+        #     probe_output[j] = probe_propagation[0]
+
+            # pump_gain[j] = ( pump_output[j]) / ( pump_signal.power(t) + 1e-50 )
+
+
 
         # # Pump output
         # plt.figure()
@@ -257,20 +301,7 @@ def main():
         # Plot probe gain
         # ============================================================
 
-        plt.figure()
-
-        plt.plot(
-            t_eval * 1e12,
-            probe_gain_dB,
-        )
-
-        plt.xlabel("Time (ps)")
-        plt.ylabel("Probe gain (dB)")
-
-        plt.title(f"SOA gain depletion and recovery (probe at {lambda_probe*1e9:5.1f} nm)")
-
-        plt.grid()
-
+        # plot_probe_gain_dB(t_eval, )
 
         # # ============================================================
         # # Plot pump gain
@@ -315,7 +346,8 @@ def main():
 
         # plt.grid()
 
-        plt.show()
+    plt.legend()
+    plt.show()
 
 if __name__ == '__main__':
     main()
