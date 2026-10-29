@@ -23,24 +23,8 @@ beta_eff = 7.3e-3     # Effective spontaneous emission factor
 
 [case_a.soa_dimensions]
 L=800e-6
-d=0.2e-6    # TODO: inventado por mi. No encontre un valor en el paper
 W=1e-6
-
-######################
-
-[case_aa]
-[case_aa.soa_conditions]
-[case_aa.soa_material]
-[case_aa.soa_dimensions]
-d=0.1e-6    # Tiene mas ganancia que el caso a
-
-######################
-
-[case_ab]
-[case_ab.soa_conditions]
-[case_ab.soa_material]
-[case_ab.soa_dimensions]
-d=0.22e-6
+d=65.7e-9    # No esta en el paper directamente. Elegido tal que la probe gain sea aprox 20dB
 
 ######################
 
