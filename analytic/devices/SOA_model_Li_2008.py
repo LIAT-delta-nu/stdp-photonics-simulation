@@ -243,7 +243,10 @@ def dn_dt(
     # there are no signals, but it does consider the ASE for the wavelengths 
     # where there is a signal.
     # This is not correct.
-
+    # BUG: currently, the calculation donde here does not correspond with eq (1)
+    # not only for the incorrect handling of ASE, but also because the width of 
+    # the gain spectrum of the SOA (in the Li 2008 paper: ΔE) is not taken into 
+    # account.
     stimulated = np.zeros_like(n)
     for input_signal_forward in input_signals_forward:
         gm = material.modal_gain(n, input_signal_forward.lamda)
