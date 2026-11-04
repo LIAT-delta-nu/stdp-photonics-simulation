@@ -2,7 +2,6 @@ import numpy as np
 from collections.abc import Callable
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from cycler import cycler
 
 def lorentzian(x, x0, FWHM, total_power=1):
     gamma = FWHM/2
@@ -32,6 +31,9 @@ class DiscreteSpectrum():
         self.N = N
         self.spectrum = np.linspace(min, max, num=N, endpoint=True)
 
+    def width(self):
+        return self.max - self.min
+
     def __getitem__(self, key):
         return self.spectrum[key]
 
@@ -43,14 +45,31 @@ class DiscreteSpectrum():
 
     # Takes a continuous psd function and returns a discrete array
     # of unitless coefficients that are an envelope of the psd
-    # in the discrete spectrum.
+    # in the discrete spectrum and where the sum of the coefficients 
+    # equals 1.
     #
     # psd: function or callable object that receives a spectrum position
     # and returns the corresponding power/[spectrum unit]
+    #
     def normalized_psd_envelope(self, psd: Callable[[float], float]):
         envelope = np.array([psd(pos) for pos in self.spectrum])
         normalized_envelope = envelope / np.sum(envelope)
         return normalized_envelope
+
+    # Takes a continuous psd function and returns a discrete array
+    # of powers P_i where 
+    #  - The envelope of the P_i array is the same shape
+    # as the psd
+    #  - Σ P_i = P_tot
+    #  - P_i represents the power contribution of the spectrum position i
+    #    to the total por P_tot
+    #
+    # psd: function or callable object that receives a spectrum position
+    # and returns the corresponding power/[spectrum unit]
+    #
+    # P_tot: Total power (Σ P_i = P_tot) [default: 1]
+    def psd_to_power(self, psd: Callable[[float], float], P_tot: float = 1):
+        return self.normalized_psd_envelope(psd) * P_tot * self.N
 
 if __name__ == '__main__':
 
