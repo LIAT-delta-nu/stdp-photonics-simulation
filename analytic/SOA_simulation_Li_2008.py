@@ -2,20 +2,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from dataclasses import dataclass, astuple
-from pathlib import Path
+from dataclasses import dataclass
+from collections.abc import Callable
+
 
 import devices.SOA_model_Li_2008 as soa
 import signals.signals as signals
+from spectrum.spectrum import DiscreteSpectrum
 from plots import plot_carrier_density, plot_probe_gain_dB
 
 CASES = (
     "case_a", 
     # "case_aa", 
     # "case_ab", 
-    "case_b", 
-    "case_c", 
-    "case_d",
+    # "case_b", 
+    # "case_c", 
+    # "case_d",
 )
 
 @dataclass
@@ -23,13 +25,14 @@ class Simulation():
     conditions: soa.SoaConditions
     material: soa.SoaMaterial
     dims: soa.SoaDimensions
-    input_signals_forward: tuple[soa.SoaInputSignal]
-    input_signals_forward_steady_state: tuple[soa.SoaInputSignal]
-    input_signals_backward: tuple[soa.SoaInputSignal]
-    input_signals_backward_steady_state: tuple[soa.SoaInputSignal]
+    input_signals_forward: Callable[[float], float]
+    input_signals_forward_steady_state: Callable[[float], float]
+    input_signals_backward: Callable[[float], float]
+    input_signals_backward_steady_state:  Callable[[float], float]
     n_initial_guess: float
     Nz: int
     t_span: tuple[float]
+    spectrum: DiscreteSpectrum
 
 
     def z(self):
@@ -52,7 +55,8 @@ class Simulation():
                 self.dims,
                 self.input_signals_forward_steady_state,
                 self.input_signals_backward_steady_state,
-                z
+                self.spectrum,
+                z,
             ),
             method="BDF",
             rtol=1e-10,
@@ -74,7 +78,8 @@ class Simulation():
                 self.dims,
                 self.input_signals_forward,
                 self.input_signals_backward,
-                z
+                self.spectrum,
+                z,
             ),
             method="BDF",
             rtol=1e-10,
@@ -82,66 +87,77 @@ class Simulation():
         )
         return solution
 
+def input_signal_spectrum_wrapper(
+    signal_power : Callable[[float], float],
+    spectrum : DiscreteSpectrum,
+    wavelength : float,
+):
+    i = int((wavelength - spectrum.min) / spectrum.width())
+    return lambda t: np.eye(1, spectrum.N, i).ravel() * signal_power(t)
+
 
 def main():
     # ============================================================
     # Calculate observable gain versus time
     # ============================================================
+    
+    # Simulation params
+    Nz = 100        # num of points for spatial discretization
+    # Nt = 1000
+    Nlambda = 101  # num of points for spectral discretization
+
+    # gain spectrum
+    spectrum = DiscreteSpectrum(1500e-9, 1600e-9, N=Nlambda) # TODO: check and add real values
 
     # Input signals
     ## Pump
     lambda_pump = 1551e-9
-    pump_power_peak = 0
-    # pump_power_peak = 5e-3
+    # pump_power_peak = 0
+    pump_power_peak = 5e-3
     pump_pulse_width = 65e-12   # FWHM
     pump_t_peak = 200e-12
 
     ## Probe
     lambda_probe = 1580e-9
-    probe_power_input = 40e-6     # W
+    probe_power_input = 40e-9     # W
 
-    # Simulation params
-    Nz = 100
-
-    Nt = 1000
     t_start = 0.0
     t_end = 3e-9
-    t_eval = np.linspace(
-        t_start,
-        t_end,
-        Nt
-    )
 
     # Input signals 
     ## Pump (forward)
-    pump_signal : soa.SoaInputSignal = soa.SoaInputSignal(
-        lamda = lambda_pump,
-        power = lambda t: signals.gaussian_pulse(t, pump_power_peak, pump_pulse_width, pump_t_peak)
+    pump_signal = input_signal_spectrum_wrapper(
+        signal_power=lambda t : signals.gaussian_pulse(t, pump_power_peak, pump_pulse_width, pump_t_peak),
+        spectrum=spectrum,
+        wavelength=lambda_pump
     )
-
     ## Probe (backwards)
-    probe_signal : soa.SoaInputSignal = soa.SoaInputSignal(
-        lamda = lambda_probe,
-        power = lambda t: probe_power_input
+    probe_signal = input_signal_spectrum_wrapper(
+        signal_power=lambda _ : probe_power_input,
+        spectrum=spectrum,
+        wavelength=lambda_probe
     )
-
+    ## No signal
+    no_signal = input_signal_spectrum_wrapper(
+        signal_power=lambda _ : 0,
+        spectrum=spectrum,
+        wavelength=lambda_pump
+    )
 
     # Simulation object
     sim = Simulation(
         conditions=soa.SoaConditions.from_toml("./sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_conditions"),
         material=soa.SoaMaterial.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_material"),
         dims=soa.SoaDimensions.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_dimensions"),
-        input_signals_backward=(probe_signal,),
-        input_signals_backward_steady_state=(probe_signal,),
-        input_signals_forward=(pump_signal,),
-        # input_signals_forward=(),
-        input_signals_forward_steady_state=(),
-        n_initial_guess=3e24,   # TODO: change n initial guess in a case by case basis
+        input_signals_forward_steady_state=no_signal,
+        input_signals_backward_steady_state=probe_signal,
+        input_signals_forward=pump_signal,
+        input_signals_backward=probe_signal,
+        n_initial_guess=6.6e24,   # TODO: change n initial guess in a case by case basis
         Nz=Nz,
         t_span=(t_start, t_end),
+        spectrum=spectrum
     )
-
-
 
     for case in CASES:
         print(case)
@@ -161,9 +177,9 @@ def main():
 
         probe_output = [
                     soa.propagate_power(
-                    probe_signal.power(t),
+                    probe_signal(t),
+                    spectrum,
                     n,
-                    probe_signal.lamda,
                     z,
                     sim.material,
                     sim.dims,
@@ -174,9 +190,9 @@ def main():
 
         pump_output = [
                     soa.propagate_power(
-                    pump_signal.power(t),
+                    pump_signal(t),
+                    spectrum,
                     n,
-                    pump_signal.lamda,
                     z,
                     sim.material,
                     sim.dims,
@@ -187,8 +203,8 @@ def main():
 
 
         # Probe gain
-        probe_gain_dB = [10*np.log10(p/probe_signal.power(t)) for p, t in zip(probe_output, t_eval)]
-        # pump_gain_dB = [10*np.log10(p/pump_signal.power(t)) for p, t in zip(pump_output, t_eval)]
+        probe_gain_dB = [10*np.log10(p/probe_signal(t)) for p, t in zip(probe_output, t_eval)]
+        # pump_gain_dB = [10*np.log10(p/pump_signal(t)) for p, t in zip(pump_output, t_eval)]
 
         # ============================================================
         # Plots

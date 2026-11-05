@@ -2,6 +2,7 @@ import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass, astuple
 from .toml_config import toml_config
+from spectrum.spectrum import DiscreteSpectrum
 
 # ============================================================
 # Modal gain calc
@@ -130,16 +131,6 @@ class SoaDimensions:
         return self.W * self.d * self.L
 
 # ============================================================
-# SOA description dataclasses
-# ============================================================
-
-# TODO: esto es muy feo y tendria que volar. Creo que estamal asumir que una entrada tiene siempre la misma long. de onda
-@dataclass
-class SoaInputSignal:
-    lamda: float
-    power: Callable[[float,], float]
-
-# ============================================================
 # Physical constants
 # ============================================================
 
@@ -152,15 +143,21 @@ c = 299792458.0           # m/s
 # Optical propagation (based on Li et al 2008)
 # ============================================================
 
-# NOTE: asume que hay una única wavelength. 
-# Si quiero propagar señales que sean superposicion de varias
-# longitudes de onda, esta funcion no me lo permite.
+# P_in [np.ndarray]: 
+#   arreglo con la potencia por bin espectral
+#
+# spectrum [np.ndarray]: 
+#   arreglo con la frecuencia central de cada bin espectral
+#
+#  z [np.ndarray]: 
+#   posiciones dentro del SOA. Se asume que estan uniformemente 
+#   distribuidas.
 
 def propagate_power(
-    P_in, 
-    n, 
-    wavelength, 
-    z,
+    P_in : np.ndarray, 
+    spectrum : DiscreteSpectrum, 
+    n : np.ndarray, 
+    z : np.ndarray,
     material : SoaMaterial,
     dims : SoaDimensions,
     forward : bool = True,
@@ -169,40 +166,42 @@ def propagate_power(
     Propagate a travelling optical signal
     through the SOA for the current carrier-density profile.
 
+    Ec. dif. de la forma: y' + f0 * y = g0, con f0 y g0 ctes.
+    Solucion:
+    y = [y(0) - g0/f0 ] * exp(-f0*z) + g0/f0
+
+    y = P(z)
+    f0 = -(gm-alpha)   (asumido constante para dz suficientemente chico)
+    g0 = W*d*B*n^2*(hc/lambda)beta_eff/2/N_spectrum  (asumido constante para dz suficientemente chico)
+
     forward : bool
         If True, P_in is propagated from z[0] to z[Nz-1], where Nz=len(z)
         If False, P_in is propagated from z[Nz-1] to z[0].
     returns:
-        array P of the same len as z, where P[i] is the propagated power in z[i].
+        array P of shape (n_z, n_spectrum), so indexing is P[z, lambda], 
+        so P[i, j] is the propagated power in z[i] at wavelength spectrum[j].
     """
 
-    # Ec. dif. de la forma: y' + f0 * y = g0, con f0 y g0 ctes.
-    # Solucion:
-    # y = [y(0) - g0/f0 ] * exp(-f0*z) + g0/f0
-
-    # y = P(z)
-    # f0 = -(gm-alpha)   (asumido constante para dz suficientemente chico)
-    # g0 = W*d*B*n^2*(hc/lambda)beta_eff/2  (asumido constante para dz suficientemente chico)
-
-
-    P = np.zeros_like(z)
+    P = np.zeros((len(z), spectrum.N)) # shape: (n_z, n_spectrum), so indexing is P[z, lambda]
     P[0] = P_in
     dz = (z[-1] - z[0]) / (len(z) - 1)
+
+    wavelengths = spectrum.spectrum
 
     if not forward:
         n = np.flip(n)
 
     for i, n_i in enumerate(n[:-1]):
 
-        gm = material.modal_gain(n_i, wavelength)    # TODO: esto no funciona si se ensancha un poco el espectro
+        gm = material.modal_gain(n_i, wavelengths)
 
         f0 = -(gm - material.alpha)
-        g0 = material.beta_eff/2 * dims.area()*material.B*n_i*n_i*h*c/wavelength    # TODO: y si tengo un pulso con espectro ancho? que hago con eso aca
+        g0 = material.beta_eff/2 * dims.area()*material.B*n_i*n_i*h*c/wavelengths/spectrum.N
 
         P[i + 1] = (P[i] - g0/f0) * np.exp(-f0 * dz) + g0/f0
 
     if not forward:
-        P = np.flip(P)
+        P[:] = np.flip(P, axis=0)
 
     return P
 
@@ -217,9 +216,10 @@ def dn_dt(
     condition: SoaConditions,
     material: SoaMaterial,
     dims: SoaDimensions,
-    input_signals_forward: list[SoaInputSignal],
-    input_signals_backward: list[SoaInputSignal],
-    z: np.ndarray
+    input_signal_forward : Callable[[float], np.ndarray],
+    input_signal_backward : Callable[[float], np.ndarray],
+    spectrum: DiscreteSpectrum,
+    z: np.ndarray,
 ):
     """
     dn/dt for every longitudinal SOA section.
@@ -235,100 +235,36 @@ def dn_dt(
     recombination = material.R_tot(n)
 
     # Stimulated emission and absorption contribution
-    # For the present simplified model we use the
-    # pump and probe powers directly rather than
-    # integrating over a full optical spectrum.
-    # TODO: integrate over spectrum.
-    # BUG: current algorithm does not consider ASE in wavelengths where 
-    # there are no signals, but it does consider the ASE for the wavelengths 
-    # where there is a signal.
-    # This is not correct.
-    # BUG: currently, the calculation donde here does not correspond with eq (1)
-    # not only for the incorrect handling of ASE, but also because the width of 
-    # the gain spectrum of the SOA (in the Li 2008 paper: ΔE) is not taken into 
-    # account.
-    stimulated = np.zeros_like(n)
-    for input_signal_forward in input_signals_forward:
-        gm = material.modal_gain(n, input_signal_forward.lamda)
-        E_photon = h * c / input_signal_forward.lamda
-        stimulated += propagate_power(
-            input_signal_forward.power(t),
-            n,
-            input_signal_forward.lamda,
-            z,
-            material,
-            dims,
-            forward=True,
-        ) * gm / E_photon / dims.area()
-    
-    for input_signal_backward in input_signals_backward:
-        gm = material.modal_gain(n, input_signal_backward.lamda)
-        E_photon = h * c / input_signal_backward.lamda
-        stimulated += propagate_power(
-            input_signal_backward.power(t),
-            n,
-            input_signal_backward.lamda,
-            z,
-            material,
-            dims,
-            forward=False,
-        ) * gm / E_photon / dims.area()
+
+    # TODO: optionally, to speed up simulation (how much?), gm(n, lambda) 
+    # can be calculated in this function and be passed to the propagate 
+    # power function, so that it is not calculated again.
+    gm = np.array([material.modal_gain(n_i, spectrum.spectrum) for n_i in n] )
+    P_forward = propagate_power(
+        input_signal_forward(t),
+        spectrum,
+        n,
+        z,
+        material,
+        dims,
+        forward=True,
+    )
+    P_backward = propagate_power(
+        input_signal_backward(t),
+        spectrum,
+        n,
+        z,
+        material,
+        dims,
+        forward=False,
+    )
+    P = P_forward + P_backward  # shape (n_z, n_spectrum), so indexing is P[z, lambda]
+    E_photon = h * c / spectrum.spectrum
+
+    stimulated  = np.sum(gm * P / E_photon, axis=1) / dims.area()
 
     return injection - recombination - stimulated
 
 
-
-
-
-# if __name__ == '__main__':
-#     main()
-    # n = np.linspace(1e9, 1e30)
-
-    # gain_pump = [_modal_gain(dn, lambda_pump) for dn in n]
-    # gain_probe = [_modal_gain(dn, lambda_probe) for dn in n]
-
-
-    # plt.figure()
-
-    # plt.plot(
-    #     n,
-    #     gain_pump,
-    # )
-
-    # # plt.plot(
-    # #     delta_n,
-    # #     gain_probe,
-    # # )
-
-    # plt.xlabel("n")
-    # plt.ylabel("modal gain")
-
-    # plt.grid()
-
-    # plt.show()
-
-    # lambdas = np.linspace(1585e-9, 1595e-9)
-    
-    # n0 = 1.0e24               # m^-3
-    # gain_pump = [_modal_gain(n0, lamda) for lamda in lambdas]
-
-
-    # plt.figure()
-
-    # plt.plot(
-    #     lambdas,
-    #     gain_pump,
-    # )
-
-    # # plt.plot(
-    # #     delta_n,
-    # #     gain_probe,
-    # # )
-
-    # plt.xlabel("lambda")
-    # plt.ylabel("modal gain")
-
-    # plt.grid()
-
-    # plt.show()
-
+if __name__ == '__main__':
+    pass
