@@ -1,7 +1,7 @@
 import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass, astuple
-from .toml_config import toml_config
+from config.toml_config import toml_config
 from spectrum.spectrum import DiscreteSpectrum
 
 # ============================================================
