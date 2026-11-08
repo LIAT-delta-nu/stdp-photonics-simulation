@@ -24,6 +24,24 @@ def plot_carrier_density(t, z, n, outfile: str | Path = None):
 
     return fig, ax
 
+def plot_signal_output(t, signal_output, outfile: str | Path = None):
+    fig, ax = plt.subplots()
+
+    ax.plot(
+        t * 1e12,
+        signal_output,
+    )
+
+    ax.set_xlabel("Time (ps)")
+    ax.set_ylabel("Output [W]")
+
+    ax.set_title(f"SOA output")
+    ax.grid()
+
+    if outfile:
+        fig.savefig(outfile)
+
+
 
 def plot_probe_gain_dB(t, probe_gain_dB, outfile: str | Path = None):
     fig, ax = plt.subplots()
