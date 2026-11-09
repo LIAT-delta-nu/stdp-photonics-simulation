@@ -280,6 +280,7 @@ def main():
         #########################################
 
         # Calc. probe and pump output
+        n = solution_sim_main.y
         t_eval = solution_sim_main.t
 
         if DEBUG:
@@ -300,7 +301,7 @@ def main():
                     soa_dims,
                     forward=False,
                 )[0]    # probe is backwards propagated so probe output is at [0]
-                for n, t in zip(solution_sim_main.y.T, t_eval)
+                for n, t in zip(n.T, t_eval)
             ],
             axis=1
         )
@@ -322,7 +323,7 @@ def main():
                     soa_dims,
                     forward=True,
                 )[-1]   # pump is forwards propagated so pump output is at [-1]
-                for n, t in zip(solution_sim_main.y.T, t_eval)
+                for n, t in zip(n.T, t_eval)
             ],
             axis=1
         )
@@ -335,7 +336,7 @@ def main():
 
         # Probe input power and gain
         probe_input_power = np.array(np.sum([probe_signal(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
-        probe_gain_dB = [10*np.log10(p_out/p_in) for p_out, p_in in zip(probe_output_power, probe_input_power)]
+        probe_gain_dB = np.array([10*np.log10(p_out/p_in) for p_out, p_in in zip(probe_output_power, probe_input_power)])
 
         # Pump input power
         pump_input_power = np.array(np.sum([pump_signal(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
@@ -362,7 +363,6 @@ def main():
         # Save results
         # ============================================================
 
-        n = solution_sim_main.y # Indexing: n[z,t]
         np.savez(
             save_dir / "n_sim_result.npz",
             t=t_eval,
@@ -371,23 +371,36 @@ def main():
         )
         np.savez(
             save_dir / "pump_and_probe_powers_and_gain.csv",
+                t=t_eval,
                 pump_input_power_W=pump_input_power,
                 pump_output_power_W=pump_output_power,
                 probe_input_power_W=probe_input_power,
                 probe_output_power_W=probe_output_power,
                 probe_gain_dB=probe_gain_dB,
         )
-        np.savetxt(save_dir / "n.csv", n)
+        np.savetxt(
+            save_dir / "n.csv", 
+            n,
+            delimiter=',',
+        )
+        data = np.block([
+                arr[:, np.newaxis]
+                for arr in (
+                    t_eval,
+                    pump_input_power,
+                    pump_output_power,
+                    probe_input_power,
+                    probe_output_power,
+                    probe_gain_dB,
+                )
+            ]
+        )
         np.savetxt(
             save_dir / "pump_and_probe_powers_and_gain.csv",
-            (
-                pump_input_power,
-                pump_output_power,
-                probe_input_power,
-                probe_output_power,
-                probe_gain_dB,
-            ),
-            header="Pump input power [W], Pump output power [W], Probe input power [W], Probe output power [W], Probe gain [dB]"
+            data,
+            comments='',
+            delimiter=',',
+            header="t[s], Pump input power [W], Pump output power [W], Probe input power [W], Probe output power [W], Probe gain [dB]"
         )
 
         # ============================================================
