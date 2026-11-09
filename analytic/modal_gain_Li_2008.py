@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from devices.SOA_model_Li_2008 import SoaMaterial, SoaConditions, SoaDimensions
-from matplotlib.colors import ListedColormap, BoundaryNorm, TwoSlopeNorm
+from devices.SOA_model_Li_2008 import SoaMaterial
+from plots import plot_modal_gain_minus_alpha_mesh, plot_modal_gain_minus_alpha_sign_mesh
+
 
 DEFAULT_CASE = "case_a"
 CASES = (
@@ -27,36 +28,7 @@ def modal_gain_mesh(
 
     return N, Lambdas
 
-def plot_modal_gain_minus_alpha_mesh(N, Lambdas, M):
-    custom_norm=TwoSlopeNorm(vmin=np.min(M), vcenter=0., vmax=np.max(M))
-    fig, ax = plt.subplots()
-    im = ax.pcolormesh(
-        N, Lambdas, M,
-        cmap="RdBu_r",
-        norm=custom_norm,
-        # vmin=-np.nanmax(-M),
-        # vmax=np.nanmax(M),
-        shading="auto",
-    )
 
-    ax.set_xscale("log")
-    fig.colorbar(im, ax=ax, label="modal gain - alpha")
-    ax.set_xlabel("n")
-    ax.set_ylabel("lambda")
-
-
-def plot_modal_gain_sign_mesh(N, Lambdas, M):
-    fig, ax = plt.subplots()
-    
-    cmap = ListedColormap(["blue", "white", "red"])
-    norm = BoundaryNorm([-float("inf"), -1e-15, 1e-15, float("inf")], cmap.N)
-
-    im = ax.pcolormesh(N, Lambdas, M, cmap=cmap, norm=norm, shading="auto")
-
-    ax.set_xscale("log")
-    fig.colorbar(im, ax=ax, label="modal gain")
-    ax.set_xlabel("n")
-    ax.set_ylabel("lambda")
 
 def main():
 
@@ -75,10 +47,8 @@ def main():
         )
 
         M = material.modal_gain(N, Lambdas) - material.alpha
-        print(f"min: {np.min(M)} - max: {np.max(M)}")
 
         plot_modal_gain_minus_alpha_mesh(N, Lambdas, M)
-        # plot_modal_gain_sign_mesh(N, Lambdas, M)
 
 
     plt.show()

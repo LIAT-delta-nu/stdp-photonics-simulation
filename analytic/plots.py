@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
 from pathlib import Path
 from matplotlib.axes import Axes
-
+from matplotlib.colors import ListedColormap, BoundaryNorm, TwoSlopeNorm
+import numpy as np
 
 # ============================================================
 # Plot carrier density
@@ -97,6 +98,9 @@ def plot_signal_output(
 
     return fig, ax
 
+# ============================================================
+# Plot modal gain - losses
+# ============================================================
 
 def plot_probe_gain_dB(
     t,
@@ -142,3 +146,25 @@ def plot_probe_gain_dB(
 
     return fig, ax
 
+def plot_modal_gain_minus_alpha_mesh(N, Lambdas, M):
+    custom_norm=TwoSlopeNorm(vmin=np.min(M), vcenter=0., vmax=np.max(M))
+    fig, ax = plt.subplots()
+    im = ax.pcolormesh(
+        N, Lambdas, M,
+        cmap="RdBu_r",
+        norm=custom_norm,
+        # vmin=-np.nanmax(-M),
+        # vmax=np.nanmax(M),
+        shading="auto",
+    )
+
+    ax.set_xscale("log")
+    ax.set_title("gm(n,λ)-α")
+    fig.colorbar(im, ax=ax, label="m⁻¹")
+    ax.set_xlabel("n")
+    ax.set_ylabel("λ")
+    
+    cs = ax.contour(N, Lambdas, M, colors='k')
+    ax.clabel(cs)
+
+    return fig, ax
