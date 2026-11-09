@@ -32,7 +32,7 @@ Nz = 100
 Nlambda = 101
 # Simulation time
 t_start = 0.0
-t_end = 3e-9
+t_end = 1.5e-9
 # Gain spectrum
 spectrum_wavelength_min = 1500e-9
 spectrum_wavelength_max = 1600e-9
