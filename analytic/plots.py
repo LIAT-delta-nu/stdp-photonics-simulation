@@ -1,8 +1,9 @@
 import matplotlib.pyplot as plt
 from pathlib import Path
 from matplotlib.axes import Axes
-from matplotlib.colors import ListedColormap, BoundaryNorm, TwoSlopeNorm
+from matplotlib.colors import TwoSlopeNorm
 import numpy as np
+from collections.abc import Callable
 
 # ============================================================
 # Plot carrier density
@@ -13,7 +14,7 @@ def plot_carrier_density(
     n,
     outfile: str | Path = None, 
     ax: Axes = None,
-    show: bool = None,
+    show: bool = False,
     figsize: tuple = (6, 4.0),
 ):
     if ax:
@@ -39,15 +40,16 @@ def plot_carrier_density(
         fig.savefig(outfile)
 
     if show:
-        plt.show()
+        fig.show()
     else:
         pass
 
     return fig, ax
 
 # ============================================================
-# Plot carrier density
+# Plot signal output
 # ============================================================
+
 def plot_signal_output(
     t,
     signal_output,
@@ -59,7 +61,7 @@ def plot_signal_output(
     title : str = "SOA output",
     outfile: str | Path = None,
     ax: Axes = None,
-    show: bool = None,
+    show: bool = False,
     figsize: tuple = (6, 4.0),
 ):
     if ax:
@@ -92,14 +94,14 @@ def plot_signal_output(
     if label:
         ax.legend()
     if show:
-        plt.show()
+        fig.show()
     else:
         pass
 
     return fig, ax
 
 # ============================================================
-# Plot modal gain - losses
+# Plot probe gain
 # ============================================================
 
 def plot_probe_gain_dB(
@@ -137,7 +139,7 @@ def plot_probe_gain_dB(
     ax.grid()
 
     if show:
-        plt.show()
+        fig.show()
     else:
         pass
 
@@ -146,9 +148,23 @@ def plot_probe_gain_dB(
 
     return fig, ax
 
-def plot_modal_gain_minus_alpha_mesh(N, Lambdas, M):
+# ============================================================
+# Plot modal gain - losses
+# ============================================================
+
+def plot_modal_gain_minus_alpha_mesh(
+    N, 
+    Lambdas, 
+    M,
+    show = False,
+    outfile: str | Path = None, 
+    figsize: tuple = (4.0, 4.0),
+):
+    fig, ax = plt.subplots(figsize=figsize)
+    fig.set_tight_layout(True)
+
     custom_norm=TwoSlopeNorm(vmin=np.min(M), vcenter=0., vmax=np.max(M))
-    fig, ax = plt.subplots()
+
     im = ax.pcolormesh(
         N, Lambdas, M,
         cmap="RdBu_r",
@@ -160,11 +176,45 @@ def plot_modal_gain_minus_alpha_mesh(N, Lambdas, M):
 
     ax.set_xscale("log")
     ax.set_title("gm(n,λ)-α")
+
     fig.colorbar(im, ax=ax, label="m⁻¹")
+
     ax.set_xlabel("n")
     ax.set_ylabel("λ")
-    
+
     cs = ax.contour(N, Lambdas, M, colors='k')
     ax.clabel(cs)
 
+    ax.tick_params(axis="x", labelrotation=45)
+
+    if outfile:
+        fig.savefig(outfile)
+
+    if show:
+        fig.show()
+
     return fig, ax
+
+def plot_modal_gain_minus_alpha(
+    n_min, 
+    n_max, 
+    wavelength_min, 
+    wavelength_max, 
+    modal_gain: Callable[[float,float],float],
+    alpha,
+    n_n=50, 
+    n_wavelength=50, 
+    figsize=(6.0,4.0),
+    show=False,
+    outfile=None,
+):
+    n_min_log10 = np.log10(n_min)
+    n_max_log10 = np.log10(n_max)
+
+    ns_for_mesh = np.logspace(n_min_log10, n_max_log10, n_n)
+    wavelengths_for_mesh = np.linspace(wavelength_min, wavelength_max, n_wavelength)
+
+    Ns, WLs = np.meshgrid(ns_for_mesh, wavelengths_for_mesh)
+    M = modal_gain(Ns, WLs) - alpha
+
+    return plot_modal_gain_minus_alpha_mesh(Ns, WLs, M, show=show, outfile=outfile, figsize=figsize)

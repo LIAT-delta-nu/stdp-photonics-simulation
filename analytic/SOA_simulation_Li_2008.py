@@ -20,14 +20,31 @@ import copy
 import devices.SOA_model_Li_2008 as soa
 import signals.signals as signals
 from spectrum.spectrum import DiscreteSpectrum
-from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output
+from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha
 
-CASES = (
+# Cases to be run (can be overriden through cli)
+# Each case name corresponds to a toml table in a toml file with the follwing subtables:
+# [soa_material]
+# [soa_conditions]
+# [soa_dims]
+# [sim_params]
+
+# For example, for cases=["case_a","case_b"] the toml structure should be:
+# [case_a]
+# [case_a.soa_conditions]
+# ... (see SoaConditions dataclass for the values of this section)
+# [case_a.soa_material]
+# ... (see SoaMaterial dataclass for the values of this section)
+# [case_a.soa_dims]
+# ... (see SoaDimensions dataclass for the values of this section)
+# [case_a.soa_sim_params]
+# ... (see SinglePulseSoaGainSimulationParams dataclass for the values of this section)
+CASES = [
     "case_a",
-    # "case_b", 
-    # "case_c", 
-    # "case_d",
-)
+    "case_b", 
+    "case_c", 
+    "case_d",
+]
 
 @cli_config
 @toml_config(section="soa_sim_params")
@@ -202,23 +219,69 @@ def input_signal_spectrum_wrapper(
 # ):
 #     return lambda t: np.sum(np.array([signal(t) for signal in input_signals]), axis=0)
 
+def build_parser():
+    parser = ArgumentParser()
+    SinglePulseSoaGainSimulationParams.add_cli_args_to_parser(parser)
+
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        default=None,
+    )
+
+    parser.add_argument(
+        "--cases",
+        type=str,
+        nargs="+",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--default-case",
+        type=str,
+        nargs="+",
+        default=None,
+    )
+    parser.add_argument("--config-file", type=Path, default="./sim_configs/SOA_simulation_Li_2008.toml")
+    parser.add_argument("--soa-conditions-file", type=Path, default=None)
+    parser.add_argument("--soa-material-file", type=Path, default=None)
+    parser.add_argument("--soa-dims-file", type=Path, default=None)
+    parser.add_argument("--sim-params-file", type=Path, default=None)
+
+    return parser
 
 def main():
 
-    parser = ArgumentParser()
-    SinglePulseSoaGainSimulationParams.add_cli_args_to_parser(parser)
+    parser = build_parser()
     args = parser.parse_args()
 
-    default_soa_conditions=soa.SoaConditions.from_toml("./sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_conditions")
-    default_soa_material=soa.SoaMaterial.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_material")
-    default_soa_dims=soa.SoaDimensions.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_dimensions")
-    default_sim_params = SinglePulseSoaGainSimulationParams.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_sim_params")
+    if args.run_name:
+        run_name = args.run_name
+    else:
+        run_name = input("Enter run name and press enter (if no run name is wanted just press enter):\n")
+
+    cases = args.cases if args.cases else CASES
+    default_case = args.default_case if args.default_case else cases[0]
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    full_run_name = f"{timestamp}_{run_name}" if run_name else timestamp
 
+    soa_conditions_file = args.soa_conditions_file if args.soa_conditions_file else args.config_file
+    soa_material_file = args.soa_material_file if args.soa_material_file else args.config_file
+    soa_dims_file = args.soa_dims_file if args.soa_dims_file else args.config_file
+    sim_params_file = args.sim_params_file if args.sim_params_file else args.config_file
+
+    # TODO: add cli args for SoaConditions, SoaMaterial and SoaDimensions
+    default_soa_conditions=soa.SoaConditions.from_toml(soa_conditions_file,f"{default_case}.soa_conditions")
+    
+    default_soa_material=soa.SoaMaterial.from_toml(soa_material_file,f"{default_case}.soa_material")
+    
+    default_soa_dims=soa.SoaDimensions.from_toml(soa_dims_file,f"{default_case}.soa_dimensions")
+    
+    default_sim_params = SinglePulseSoaGainSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
     default_sim_params.update_from_cli_args(args)
 
-    for case in CASES:
+    for case in cases:
         if DEBUG:
             print(case)
 
@@ -231,10 +294,10 @@ def main():
         soa_dims = copy.copy(default_soa_dims)
         sim_params =  copy.copy(default_sim_params)
 
-        soa_conditions.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_conditions")
-        soa_material.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_material")
-        soa_dims.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_dimensions")
-        sim_params.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_sim_params")
+        soa_conditions.update_from_toml(soa_conditions_file,f"{case}.soa_conditions")
+        soa_material.update_from_toml(soa_material_file,f"{case}.soa_material")
+        soa_dims.update_from_toml(soa_dims_file,f"{case}.soa_dimensions")
+        sim_params.update_from_toml(sim_params_file,f"{case}.soa_sim_params")
         sim_params.update_from_cli_args(args)
 
         #########################################
@@ -334,23 +397,25 @@ def main():
             print(f"Pump power propagation execution time: {elapsed_pump} seconds.")
 
 
-        # Probe input power and gain
+        ## Probe input power and gain
         probe_input_power = np.array(np.sum([probe_signal(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
         probe_gain_dB = np.array([10*np.log10(p_out/p_in) for p_out, p_in in zip(probe_output_power, probe_input_power)])
 
-        # Pump input power
+        ## Pump input power
         pump_input_power = np.array(np.sum([pump_signal(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
 
-        # TODO: calc pump pulse input and output total energy, takinginto account that 
-        # t_eval is not evenly spaced
-        # 
-        # pump_input_energy = 
-        # pump_output_energy =
+        # Plot modal gain - alpha:
+
+
+
+
+        pump_input_energy = np.trapezoid(pump_input_power)
+        pump_output_energy = np.trapezoid(pump_output_power)
 
         # ============================================================
         # Save configs
         # ============================================================
-        save_dir = Path(OUTDIR) / timestamp / str(case)
+        save_dir = Path(OUTDIR) / full_run_name / str(case)
         save_dir.mkdir(parents=True, exist_ok=True)
 
         config_outfile = save_dir / "config.toml"
@@ -360,7 +425,7 @@ def main():
         sim_params.to_toml(config_outfile)
 
         # ============================================================
-        # Save results
+        # Save num results
         # ============================================================
 
         np.savez(
@@ -404,8 +469,19 @@ def main():
         )
 
         # ============================================================
-        # Plots
+        # Create and save plots
         # ============================================================
+        ### Modal gain - losses ###
+        plot_modal_gain_minus_alpha(
+            n_min=np.min(n),
+            n_max=np.max(n),
+            wavelength_min=sim_main.spectrum.min,
+            wavelength_max=sim_main.spectrum.max,
+            modal_gain=lambda n, wavelength : soa_material.modal_gain(n, wavelength),
+            alpha = soa_material.alpha,
+            outfile=save_dir / "modal_gain.svg",
+        )
+
         ### Carrier desity ###
         plot_carrier_density(
             t_eval,
@@ -461,8 +537,6 @@ def main():
             show=False,
         )
 
-
-    plt.show()
 
 if __name__ == '__main__':
     main()
