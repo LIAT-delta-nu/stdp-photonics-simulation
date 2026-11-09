@@ -27,7 +27,7 @@ def modal_gain_mesh(
 
     return N, Lambdas
 
-def plot_modal_gain_mesh(N, Lambdas, M):
+def plot_modal_gain_minus_alpha_mesh(N, Lambdas, M):
     custom_norm=TwoSlopeNorm(vmin=np.min(M), vcenter=0., vmax=np.max(M))
     fig, ax = plt.subplots()
     im = ax.pcolormesh(
@@ -40,7 +40,7 @@ def plot_modal_gain_mesh(N, Lambdas, M):
     )
 
     ax.set_xscale("log")
-    fig.colorbar(im, ax=ax, label="modal gain")
+    fig.colorbar(im, ax=ax, label="modal gain - alpha")
     ax.set_xlabel("n")
     ax.set_ylabel("lambda")
 
@@ -68,14 +68,16 @@ def main():
         material.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_material")
 
         N, Lambdas = modal_gain_mesh(
-            n_center=material.n0,
+            n_center=5.1e+24,
+            n_sweep_width_decades=1,
             lambda_center=1.55e-6,
+            lambda_sweep_width=0.1e-6
         )
 
-        M = material.modal_gain(N, Lambdas)
+        M = material.modal_gain(N, Lambdas) - material.alpha
         print(f"min: {np.min(M)} - max: {np.max(M)}")
 
-        plot_modal_gain_mesh(N, Lambdas, M)
+        plot_modal_gain_minus_alpha_mesh(N, Lambdas, M)
         # plot_modal_gain_sign_mesh(N, Lambdas, M)
 
 
