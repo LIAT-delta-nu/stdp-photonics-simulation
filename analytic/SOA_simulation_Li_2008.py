@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from argparse import ArgumentParser
 if DEBUG:
     import time
 
 from config import toml_config
+from config import cli_config
 import copy
 import devices.SOA_model_Li_2008 as soa
 import signals.signals as signals
@@ -27,7 +29,8 @@ CASES = (
     # "case_d",
 )
 
-@toml_config(section="soa_sim_params.single_pulse")
+@cli_config
+@toml_config(section="soa_sim_params")
 @dataclass
 class SinglePulseSoaGainSimulationParams:
     # Spatial and spectral discretization
@@ -202,12 +205,18 @@ def input_signal_spectrum_wrapper(
 
 def main():
 
+    parser = ArgumentParser()
+    SinglePulseSoaGainSimulationParams.add_cli_args_to_parser(parser)
+    args = parser.parse_args()
+
     default_soa_conditions=soa.SoaConditions.from_toml("./sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_conditions")
     default_soa_material=soa.SoaMaterial.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_material")
     default_soa_dims=soa.SoaDimensions.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_dimensions")
     default_sim_params = SinglePulseSoaGainSimulationParams.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_sim_params")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    default_sim_params.update_from_cli_args(args)
 
     for case in CASES:
         if DEBUG:
@@ -226,6 +235,7 @@ def main():
         soa_material.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_material")
         soa_dims.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_dimensions")
         sim_params.update_from_toml("sim_configs/SOA_simulation_Li_2008.toml",f"{case}.soa_sim_params")
+        sim_params.update_from_cli_args(args)
 
         #########################################
         # Simulation to find initial condition  #
