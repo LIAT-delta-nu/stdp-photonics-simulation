@@ -187,7 +187,7 @@ def input_signal_spectrum_wrapper(
     spectrum : DiscreteSpectrum,
     wavelength : float,
 ) -> Callable[[float], float]:
-    i = round((wavelength - spectrum.min) / spectrum.width())
+    i = round((wavelength - spectrum.min) * spectrum.N / spectrum.width())
     if i < 0 or i >= spectrum.N:
         print(f"Warning in input_signal_spectrum_wrapper: input signal wavelength is outside the simulated spectrum (wavelength={wavelength}, spectrum wavelength range: [{spectrum.min} - {spectrum.max}]). Input signal power will be 0 across whole spectrum.")
         return lambda t: np.zeros_likes(spectrum.spectrum)
