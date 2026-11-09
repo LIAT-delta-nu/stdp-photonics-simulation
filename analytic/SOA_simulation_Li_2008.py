@@ -1,4 +1,6 @@
 DEBUG = True
+OUTDIR = "./out"
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,12 +8,13 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from dataclasses import dataclass
 from collections.abc import Callable
-from config import toml_config
-import copy
-
+from datetime import datetime
+from pathlib import Path
 if DEBUG:
     import time
 
+from config import toml_config
+import copy
 import devices.SOA_model_Li_2008 as soa
 import signals.signals as signals
 from spectrum.spectrum import DiscreteSpectrum
@@ -203,7 +206,9 @@ def main():
     default_soa_material=soa.SoaMaterial.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_material")
     default_soa_dims=soa.SoaDimensions.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_dimensions")
     default_sim_params = SinglePulseSoaGainSimulationParams.from_toml("sim_configs/SOA_simulation_Li_2008.toml","case_a.soa_sim_params")
-    
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     for case in CASES:
         if DEBUG:
             print(case)
@@ -274,7 +279,7 @@ def main():
         pump_signal = sim_main.input_signals_forward # pump is propagated forward
         z = sim_main.z
 
-        probe_output = np.sum(
+        probe_output_power = np.sum(
             [
                 soa.propagate_power(
                     probe_signal(t), 
@@ -296,7 +301,7 @@ def main():
             print(f"Probe power propagation execution time: {elapsed_probe} seconds.")
             start_pump = time.perf_counter()
 
-        pump_output = np.sum(
+        pump_output_power = np.sum(
             [
                 soa.propagate_power(
                     pump_signal(t),  # pump is propagated forward
@@ -317,8 +322,13 @@ def main():
             elapsed_pump = stop_pump - start_pump
             print(f"Pump power propagation execution time: {elapsed_pump} seconds.")
 
-        # Probe gain
-        probe_gain_dB = [10*np.log10(p/np.sum(probe_signal(t))) for p, t in zip(probe_output, t_eval)]
+
+        # Probe input power and gain
+        probe_input_power = np.array(np.sum([probe_signal(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
+        probe_gain_dB = [10*np.log10(p_out/p_in) for p_out, p_in in zip(probe_output_power, probe_input_power)]
+
+        # Pump input power
+        pump_input_power = np.array(np.sum([pump_signal(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
 
         # TODO: calc pump pulse input and output total energy, takinginto account that 
         # t_eval is not evenly spaced
@@ -327,149 +337,108 @@ def main():
         # pump_output_energy =
 
         # ============================================================
-        # Plots
+        # Save configs
+        # ============================================================
+        save_dir = Path(OUTDIR) / timestamp / str(case)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        config_outfile = save_dir / "config.toml"
+        soa_conditions.to_toml(config_outfile)
+        soa_material.to_toml(config_outfile)
+        soa_dims.to_toml(config_outfile)
+        sim_params.to_toml(config_outfile)
+
+        # ============================================================
+        # Save results
         # ============================================================
 
+        n = solution_sim_main.y # Indexing: n[z,t]
+        np.savez(
+            save_dir / "n_sim_result.npz",
+            t=t_eval,
+            z=z,
+            n=n,
+        )
+        np.savez(
+            save_dir / "pump_and_probe_powers_and_gain.csv",
+                pump_input_power_W=pump_input_power,
+                pump_output_power_W=pump_output_power,
+                probe_input_power_W=probe_input_power,
+                probe_output_power_W=probe_output_power,
+                probe_gain_dB=probe_gain_dB,
+        )
+        np.savetxt(save_dir / "n.csv", n)
+        np.savetxt(
+            save_dir / "pump_and_probe_powers_and_gain.csv",
+            (
+                pump_input_power,
+                pump_output_power,
+                probe_input_power,
+                probe_output_power,
+                probe_gain_dB,
+            ),
+            header="Pump input power [W], Pump output power [W], Probe input power [W], Probe output power [W], Probe gain [dB]"
+        )
+
+        # ============================================================
+        # Plots
+        # ============================================================
+        ### Carrier desity ###
         plot_carrier_density(
             t_eval,
             z,
-            solution_sim_main.y
+            n,
+            outfile=save_dir / "carrier_density.svg",
         )
+
+        ### Probe gain dB ###
         plot_probe_gain_dB(
             t_eval, 
-            probe_gain_dB
+            probe_gain_dB=probe_gain_dB,
+            pump_output=pump_output_power,
+            show=False,
+            outfile=save_dir / "probe_gain_dB.svg",
         )
 
-        plot_signal_output(t_eval, pump_output)
+        ### Pump input and output ###
+        _, ax = plot_signal_output(
+            t_eval,
+            pump_input_power,
+            label="Input",
+            # outfile=save_dir / "pump_input_output.svg",
+            show=False,
+        )
 
-        # ============================================================
-        # Plot pump 
-        # ============================================================
+        plot_signal_output(
+            t_eval,
+            pump_output_power,
+            ax=ax,
+            label="Output",
+            title="Pump signal",
+            outfile=save_dir / "pump_input_output.svg",
+            show=False,
+        )
 
-
-        # pump_output[j] = pump_propagation[-1]
-        # probe_output[j] = probe_propagation[0]
-
-        # for j, t in enumerate(t_eval):
-
-        #     n = solution.y[:, j]
-
-        #     pump_propagation = soa.propagate_power(
-        #         pump_signal.power(t),
-        #         n,
-        #         pump_signal.lamda,
-        #         sim.z(),
-        #         sim.material,
-        #         sim.dims,
-        #         forward=True,
-        #     )
-
-        #     probe_propagation = soa.propagate_power(
-        #         probe_signal.power(t),
-        #         n,
-        #         probe_signal.lamda,
-        #         sim.z(),
-        #         sim.material,
-        #         sim.dims,
-        #         forward=False,
-        #     )
-
-        #     pump_output[j] = pump_propagation[-1]
-        #     probe_output[j] = probe_propagation[0]
-
-        #     pump_gain[j] = ( pump_output[j]) / ( pump_signal.power(t) + 1e-50 )
-
+        ### Pump input and output (normalized) ###
+        _, ax = plot_signal_output(
+            t_eval,
+            pump_input_power/max(pump_input_power),
+            label="Input",
+            title="Pump signal",
+            # outfile=save_dir / "pump_input_output.svg",
+            show=False,
+        )
+        plot_signal_output(
+            t_eval,
+            pump_output_power/max(pump_output_power),
+            ax=ax,
+            label="Output",
+            ylabel="Normalized power [a.u.]",
+            outfile=save_dir / "pump_input_output_normalized.svg",
+            show=False,
+        )
 
 
-        # # Pump output
-        # plt.figure()
-
-        # plt.plot(
-        #     t_eval * 1e12,
-        #     pump_output * 1e3,
-        # )
-
-        # plt.xlabel("Time (ps)")
-        # plt.ylabel("Pump output power (mW)")
-
-        # plt.title("Pump output")
-
-        # # Pump input and output power (normalized)
-        
-        # pump_input = np.array([pump_signal.power(t) for t in t_eval])
-        # pump_input_max = pump_power_peak
-        # pump_output_max = np.max(pump_output)
-
-        # plt.figure()
-        # plt.plot(
-        #     t_eval * 1e12,
-        #     pump_input/pump_input_max,
-        #     label="Input"
-        # )
-        # plt.plot(
-        #     t_eval * 1e12,
-        #     pump_output/pump_output_max,
-        #     label="Output"
-        # )
-
-        # plt.legend()
-
-        # plt.xlabel("Time (ps)")
-        # plt.ylabel("Pump power (a.u.)")
-
-        # plt.title("Pump power")
-
-
-        # ============================================================
-        # Plot probe gain
-        # ============================================================
-
-        # plot_probe_gain_dB(t_eval, )
-
-        # # ============================================================
-        # # Plot pump gain
-        # # ============================================================
-
-        # plt.figure()
-
-        # plt.plot(
-        #     t_eval * 1e12,
-        #     pump_gain_dB,
-        # )
-
-        # plt.xlabel("Time (ps)")
-        # plt.ylabel("Pump gain (dB)")
-
-        # plt.title(f"SOA gain depletion and recovery (pump at {lambda_pump*1e9:5.1f} nm)")
-
-        # plt.grid()
-        # # ============================================================
-        # # Plot pump and probe gain
-        # # ============================================================
-
-        # plt.figure()
-
-        # plt.plot(
-        #     t_eval * 1e12,
-        #     probe_gain_dB,
-        #     label="probe",
-        # )
-
-        # plt.plot(
-        #     t_eval * 1e12,
-        #     pump_gain_dB,
-        #     label="pump",
-        # )
-
-        # plt.legend()
-        # plt.xlabel("Time (ps)")
-        # plt.ylabel("Gain (dB)")
-
-        # plt.title(f"SOA gain depletion and recovery (probe at {lambda_probe*1e9:5.1f} nm and pump at {lambda_pump*1e9:5.1f} nm)")
-
-        # plt.grid()
-
-    plt.legend()
     plt.show()
 
 if __name__ == '__main__':
