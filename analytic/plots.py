@@ -163,7 +163,10 @@ def plot_modal_gain_minus_alpha_mesh(
     fig, ax = plt.subplots(figsize=figsize)
     fig.set_tight_layout(True)
 
-    custom_norm=TwoSlopeNorm(vmin=np.min(M), vcenter=0., vmax=np.max(M))
+    vmin = np.min(M) if np.min(M) < 0 else -1000 # irrelevant number since there are no M values below 0
+    vmax = np.max(M) if np.min(M) > 0 else +1000
+
+    custom_norm=TwoSlopeNorm(vmin=vmin, vcenter=0., vmax=vmax)
 
     im = ax.pcolormesh(
         N, Lambdas, M,
@@ -208,8 +211,10 @@ def plot_modal_gain_minus_alpha(
     show=False,
     outfile=None,
 ):
-    n_min_log10 = np.log10(n_min)
+    print(n_max)
+    print(n_min)
     n_max_log10 = np.log10(n_max)
+    n_min_log10 = np.log10(n_min) if n_min > 0 else 0
 
     ns_for_mesh = np.logspace(n_min_log10, n_max_log10, n_n)
     wavelengths_for_mesh = np.linspace(wavelength_min, wavelength_max, n_wavelength)
