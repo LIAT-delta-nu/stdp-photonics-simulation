@@ -49,7 +49,7 @@ CASES = [
 @cli_config
 @toml_config(section="soa_sim_params")
 @dataclass
-class SinglePulseSoaGainSimulationParams:
+class PumpProbeSoaSimulationParams:
     # Spatial and spectral discretization
     Nz: int = 100
     Nlambda: int = 101
@@ -76,41 +76,64 @@ class SinglePulseSoaGainSimulationParams:
     n_initial : float | np.ndarray = 6.6e24
 
 
-class SoaGainSimulation():
+@dataclass
+class SoaSimulation():
     soa_conditions: soa.SoaConditions
     soa_material: soa.SoaMaterial
     soa_dims: soa.SoaDimensions
     z: np.ndarray
     t_span: tuple
+    input_signals_forward_list: list[Callable[[float], float]]
     input_signals_forward: Callable[[float], float]
+    input_signals_backward_list: list[Callable[[float], float]]
     input_signals_backward: Callable[[float], float]
     spectrum: DiscreteSpectrum
     n_initial: float | np.ndarray
 
-    def __init__(
-        self,
-        sim_params: SinglePulseSoaGainSimulationParams,
+    @classmethod
+    def create_pump_probe_simulation(
+        cls,
         soa_conditions: soa.SoaConditions,
         soa_material: soa.SoaMaterial,
-        soa_dims: soa.SoaDimensions,
+        soa_dims: soa.SoaDims,
+        sim_params: PumpProbeSoaSimulationParams
     ):
-
-        # Soa description
-        self.soa_conditions = soa_conditions
-        self.soa_material = soa_material
-        self.soa_dims = soa_dims
-
+        # Simulation time span
+        t_span = (sim_params.t_start, sim_params.t_end)
         # Spatial and spectral discretization:
-        self.update_z(soa_dims.L, sim_params.Nz)
-        self.update_spectrum(
+        z = np.linspace(0.0, soa_dims.L, sim_params.Nz)
+        spectrum = DiscreteSpectrum(
             sim_params.spectrum_wavelength_min,
             sim_params.spectrum_wavelength_max,
             sim_params.Nlambda,
         )
 
+        # Simulation initial condition
+        if isinstance(sim_params.n_initial,(float, int)):
+            n_initial = np.full_like(z, sim_params.n_initial)
+        elif isinstance(sim_params.n_initial,(np.ndarray,)):
+            n_initial = np.array(sim_params.n_initial)
+        else:
+            print("Warning: n_initial for SOA propagation simulation is of unknown type. Using default 6.6e24")
+            n_initial = np.full_like(z, 6.6e24)
+
+        soa_sim = cls(
+            soa_conditions=soa_conditions,
+            soa_material=soa_material,
+            soa_dims=soa_dims,
+            z=z,
+            t_span=t_span,
+            input_signals_forward_list=[],
+            input_signals_forward=lambda _ : 0,
+            input_signals_backward_list=[],
+            input_signals_backward=lambda _ : 0,
+            spectrum=spectrum,
+            n_initial=n_initial,
+        )
+
         # Pump and probe input signals:
         ## Pump (forward)
-        pump_signal = self.input_signal_spectrum_wrapper(
+        pump_signal = spectrum.monochromatic_signal_to_full_spectrum(
             signal_power=lambda t : signals.gaussian_pulse(
                 t,
                 power_peak=sim_params.pump_power_peak,
@@ -119,26 +142,17 @@ class SoaGainSimulation():
             ),
             wavelength=sim_params.pump_wavelength
         )
-        self.input_signals_forward = pump_signal
         
         ## Probe (backwards)
-        probe_signal = self.input_signal_spectrum_wrapper(
+        probe_signal = spectrum.monochromatic_signal_to_full_spectrum(
             signal_power=lambda _ : sim_params.probe_power,
             wavelength=sim_params.pump_wavelength
         )
-        self.input_signals_backward = probe_signal
 
-        # Simulation time span
-        self.t_span = (sim_params.t_start, sim_params.t_end)
-        
-        # Simulation initial condition
-        if isinstance(sim_params.n_initial,(float, int)):
-            self.n_initial = np.full_like(self.z, sim_params.n_initial)
-        elif isinstance(sim_params.n_initial,(np.ndarray,)):
-            self.n_initial = np.array(sim_params.n_initial)
-        else:
-            print("Warning: n_initial for SOA propagation simulation is of unknown type. Using default 6.6e24")
-            self.n_initial = np.full_like(self.z, 6.6e24)
+        soa_sim.add_input_signal_forward(pump_signal)
+        soa_sim.add_input_signal_backward(probe_signal)
+
+        return soa_sim
 
     def update_z(self, L, Nz):
         self.z = np.linspace(0.0, L, Nz)
@@ -155,24 +169,6 @@ class SoaGainSimulation():
             max=spectrum_wavelength_max, 
             N=Nlambda
         )
-
-    def clear_input_signal_forward(self):
-        self.input_signals_forward = lambda _: 0
-
-    def clear_input_signal_backward(self):
-        self.input_signals_backward = lambda _: 0
-
-    def input_signal_spectrum_wrapper(
-        self,
-        signal_power : Callable[[float], float],
-        wavelength : float,
-    ) -> Callable[[float], float]:
-        signal = input_signal_spectrum_wrapper(
-            signal_power=signal_power,
-            spectrum=self.spectrum,
-            wavelength=wavelength
-        )
-        return signal
 
     def run(self):
         if DEBUG:
@@ -201,27 +197,18 @@ class SoaGainSimulation():
             print(f"solve_ivp execution time: {elapsed_1} seconds.")
         return solution
 
+    def add_input_signal_forward(self, input_signal_forward: Callable[[float], np.ndarray]):
+        self.input_signals_forward_list.append(input_signal_forward)
+        self.input_signals_forward = lambda t: np.sum(np.array([signal(t) for signal in self.input_signals_forward_list]), axis=0)
 
-def input_signal_spectrum_wrapper(
-    signal_power : Callable[[float], float],
-    spectrum : DiscreteSpectrum,
-    wavelength : float,
-) -> Callable[[float], float]:
-    i = round((wavelength - spectrum.min) * spectrum.N / spectrum.width())
-    if i < 0 or i >= spectrum.N:
-        print(f"Warning in input_signal_spectrum_wrapper: input signal wavelength is outside the simulated spectrum (wavelength={wavelength}, spectrum wavelength range: [{spectrum.min} - {spectrum.max}]). Input signal power will be 0 across whole spectrum.")
-        return lambda t: np.zeros_likes(spectrum.spectrum)
-    return lambda t: np.eye(1, spectrum.N, i).ravel() * signal_power(t)
+    def add_input_signal_backward(self, input_signal_backward: Callable[[float], np.ndarray]):
+        self.input_signals_backward_list.append(input_signal_backward)
+        self.input_signals_backward = lambda t: np.sum(np.array([signal(t) for signal in self.input_signals_backward_list]), axis=0)
 
-
-# def combine_input_signals(
-#     input_signals: list[Callable[[float], np.ndarray]]
-# ):
-#     return lambda t: np.sum(np.array([signal(t) for signal in input_signals]), axis=0)
 
 def build_parser():
     parser = ArgumentParser()
-    SinglePulseSoaGainSimulationParams.add_cli_args_to_parser(parser)
+    PumpProbeSoaSimulationParams.add_cli_args_to_parser(parser)
 
     parser.add_argument(
         "--run-name",
@@ -278,7 +265,7 @@ def main():
     
     default_soa_dims=soa.SoaDimensions.from_toml(soa_dims_file,f"{default_case}.soa_dimensions")
     
-    default_sim_params = SinglePulseSoaGainSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
+    default_sim_params = PumpProbeSoaSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
     default_sim_params.update_from_cli_args(args)
 
     for case in cases:
@@ -309,7 +296,7 @@ def main():
         sim_params_initial_condition.t_end = 3e-3
         sim_params_initial_condition.pump_power_peak = 0.0
 
-        sim_initial_condition = SoaGainSimulation(
+        sim_initial_condition = SoaSimulation.create_pump_probe_simulation(
             sim_params=sim_params_initial_condition,
             soa_conditions=soa_conditions,
             soa_material=soa_material,
@@ -328,7 +315,7 @@ def main():
         # Use steady state n(z) (with pump and without probe) as initial condition for main simulation
         sim_params_main.n_initial = solution_sim_initial_condition.y[:, -1]
 
-        sim_main = SoaGainSimulation(
+        sim_main = SoaSimulation.create_pump_probe_simulation(
             sim_params=sim_params_main,
             soa_conditions=soa_conditions,
             soa_material=soa_material,

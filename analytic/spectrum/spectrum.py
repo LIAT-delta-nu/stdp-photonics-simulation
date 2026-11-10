@@ -43,6 +43,18 @@ class DiscreteSpectrum():
     def __iter__(self):
         return iter(self.spectrum)
 
+    def monochromatic_signal_to_full_spectrum(
+        self,
+        signal_power : Callable[[float], float],
+        wavelength : float,
+    ) -> Callable[[float], float]:
+        i = round((wavelength - self.min) * self.N / self.width())
+        if i < 0 or i >= self.N:
+            print(f"Warning: input signal wavelength is outside the simulated spectrum (wavelength={wavelength}, spectrum wavelength range: [{spectrum.min} - {spectrum.max}]). Input signal power will be 0 across whole spectrum.")
+            return lambda _: np.zeros(self.N)
+        signal = lambda t: np.eye(1, self.N, i).ravel() * signal_power(t)
+        return signal
+
     # Takes a continuous psd function and returns a discrete array
     # of unitless coefficients that are an envelope of the psd
     # in the discrete spectrum and where the sum of the coefficients 
