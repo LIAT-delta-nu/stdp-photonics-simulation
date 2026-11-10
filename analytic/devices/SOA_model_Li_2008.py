@@ -1,8 +1,12 @@
+DEBUG = True
+
 import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass, astuple
 from config.toml_config import toml_config
 from spectrum.spectrum import DiscreteSpectrum
+from scipy.integrate import solve_ivp
+import time
 
 # ============================================================
 # Modal gain calc
@@ -265,6 +269,55 @@ def dn_dt(
 
     return injection - recombination - stimulated
 
+
+@dataclass
+class SoaSimulation():
+    soa_conditions: SoaConditions
+    soa_material: SoaMaterial
+    soa_dims: SoaDimensions
+    z: np.ndarray
+    t_span: tuple
+    input_signals_forward_list: list[Callable[[float], float]]
+    input_signals_forward: Callable[[float], float]
+    input_signals_backward_list: list[Callable[[float], float]]
+    input_signals_backward: Callable[[float], float]
+    spectrum: DiscreteSpectrum
+    n_initial: float | np.ndarray
+
+    def run(self):
+        if DEBUG:
+            start_1 = time.perf_counter()
+
+        solution = solve_ivp(
+            fun=dn_dt,
+            t_span=self.t_span,
+            y0=self.n_initial,
+            args=(
+                self.soa_conditions,
+                self.soa_material,
+                self.soa_dims,
+                self.input_signals_forward,
+                self.input_signals_backward,
+                self.spectrum,
+                self.z,
+            ),
+            method="BDF",
+            rtol=1e-10,
+            atol=1e0,
+        )
+        if DEBUG:
+            stop_1 = time.perf_counter()
+            elapsed_1 = stop_1 - start_1
+            print(f"solve_ivp execution time: {elapsed_1} seconds.")
+        return solution
+
+    def add_input_signal_forward(self, input_signal_forward: Callable[[float], np.ndarray]):
+        self.input_signals_forward_list.append(input_signal_forward)
+        self.input_signals_forward = lambda t: np.sum(np.array([signal(t) for signal in self.input_signals_forward_list]), axis=0)
+
+    def add_input_signal_backward(self, input_signal_backward: Callable[[float], np.ndarray]):
+        self.input_signals_backward_list.append(input_signal_backward)
+        self.input_signals_backward = lambda t: np.sum(np.array([signal(t) for signal in self.input_signals_backward_list]), axis=0)
 
 if __name__ == '__main__':
     pass
