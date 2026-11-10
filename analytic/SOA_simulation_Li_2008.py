@@ -2,9 +2,9 @@ DEBUG = True
 OUTDIR = "./out"
 
 
-import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.pyplot as plt
+import csv
 from scipy.integrate import solve_ivp
 from dataclasses import dataclass
 from collections.abc import Callable
@@ -404,13 +404,8 @@ def main():
         ## Pump input power
         pump_input_power = np.array(np.sum([pump_signal(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
 
-        # Plot modal gain - alpha:
-
-
-
-
-        pump_input_energy = np.trapezoid(pump_input_power)
-        pump_output_energy = np.trapezoid(pump_output_power)
+        pump_input_measurements = signals.measure_pulse(pump_input_power, t_eval)
+        pump_output_measurements = signals.measure_pulse(pump_output_power, t_eval)
 
         # ============================================================
         # Save configs
@@ -467,6 +462,19 @@ def main():
             delimiter=',',
             header="t[s], Pump input power [W], Pump output power [W], Probe input power [W], Probe output power [W], Probe gain [dB]"
         )
+
+        pump_input_measurements["name"] = "input"
+        pump_output_measurements["name"] = "output"
+
+        pump_measurements = [
+            pump_input_measurements,
+            pump_output_measurements,
+        ]
+
+        with open(save_dir / "pump_pulse_info.csv", "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=pump_measurements[0].keys())
+            writer.writeheader()
+            writer.writerows(pump_measurements)
 
         # ============================================================
         # Create and save plots
