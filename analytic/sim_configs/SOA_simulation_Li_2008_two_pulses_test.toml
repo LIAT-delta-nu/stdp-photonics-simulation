@@ -1,0 +1,74 @@
+[case_a]
+[case_a.soa_conditions]
+I=72e-3
+
+[case_a.soa_material]
+# Transparency
+n0 = 1.0e24          # Transparency carrier concentration, m^-3
+lambda_0 = 1.585e-6  # Transparency wavelength, m
+
+# Modal gain parameters
+a0 = 4.5e-21         # Modal gain parameter, m^2
+a1 = 1.5e18          # Modal gain parameter, m^-3
+a2 = 5.0e-33         # Modal gain parameter, m^4
+
+# Carrier recombination coefficients
+A = 2.0e8             # Defect recombination, s^-1
+B = 3.83e-17          # Spontaneous radiative recombination, m^3/s
+C = 4.0e-41           # Auger recombination, m^6/s
+
+# Loss and spontaneous emission
+alpha = 1.4e4         # Intrinsic material loss, m^-1
+beta_eff = 7.3e-3     # Effective spontaneous emission factor
+
+[case_a.soa_dimensions]
+L=800e-6
+W=1e-6
+d=65.7e-9    # No esta en el paper directamente. Elegido tal que la probe gain sea aprox 20dB
+
+[case_a.soa_sim_params]
+# Spatial and spectral discretization
+Nz=10
+Nlambda = 101
+# Simulation time
+t_start = 0.0
+t_end = 1.5e-9
+# Gain spectrum
+spectrum_wavelength_min = 1500e-9
+spectrum_wavelength_max = 1600e-9
+# Simulation initial condition
+n_initial = 6.6e24
+# Pulse 1
+pulse_1_wavelength = 1551e-9
+pulse_1_power_peak = 5e-3
+pulse_1_width = 65e-12
+pulse_1_t_peak = 200e-12
+pulse_1_forward = true
+# Pulse 2
+pulse_2_wavelength = 1560e-9
+pulse_2_power_peak = 5e-3
+pulse_2_width = 65e-12
+pulse_2_t_peak = 300e-12
+pulse_2_forward = true
+
+[case_b]
+[case_b.soa_conditions]
+[case_b.soa_material]
+[case_b.soa_dimensions]
+[case_b.soa_sim_params]
+pulse_2_t_peak = 400e-12
+
+[case_c]
+[case_c.soa_conditions]
+[case_c.soa_material]
+[case_c.soa_dimensions]
+[case_c.soa_sim_params]
+pulse_2_t_peak = 500e-12
+
+[case_d]
+[case_d.soa_conditions]
+[case_d.soa_material]
+[case_d.soa_dimensions]
+[case_d.soa_sim_params]
+pulse_2_t_peak = 600e-12
+

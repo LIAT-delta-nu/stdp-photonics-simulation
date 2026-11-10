@@ -311,6 +311,12 @@ class SoaSimulation():
             print(f"solve_ivp execution time: {elapsed_1} seconds.")
         return solution
 
+    def add_input_signal(self, input_signal: Callable[[float], np.ndarray], forward: bool):
+        if forward:
+            self.add_input_signal_forward(input_signal)
+        else:
+            self.add_input_signal_backward(input_signal)
+
     def add_input_signal_forward(self, input_signal_forward: Callable[[float], np.ndarray]):
         self.input_signals_forward_list.append(input_signal_forward)
         self.input_signals_forward = lambda t: np.sum(np.array([signal(t) for signal in self.input_signals_forward_list]), axis=0)
