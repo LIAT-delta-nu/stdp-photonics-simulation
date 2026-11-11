@@ -211,8 +211,6 @@ def plot_modal_gain_minus_alpha(
     show=False,
     outfile=None,
 ):
-    print(n_max)
-    print(n_min)
     n_max_log10 = np.log10(n_max)
     n_min_log10 = np.log10(n_min) if n_min > 0 else 0
 
