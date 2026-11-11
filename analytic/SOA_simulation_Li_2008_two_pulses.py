@@ -213,7 +213,9 @@ def main():
     sim_type_name = default_sim_params.sim_type_name
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    full_run_name = f"{timestamp}_{sim_type_name}_{run_name}" if run_name else f"{timestamp}_{sim_type_name}"
+    full_run_name = f"{timestamp}__{sim_type_name}__{run_name}" if run_name else f"{timestamp}__{sim_type_name}"
+
+    cases = list(dict.fromkeys(cases))  # Remove duplicates, preserving order
 
     for case in cases:
         if DEBUG:

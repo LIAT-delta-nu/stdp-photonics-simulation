@@ -49,7 +49,7 @@ CASES = [
 @toml_config(section="soa_sim_params")
 @dataclass
 class PumpProbeSoaSimulationParams:
-    sim_type_name : str = "2 pulses"
+    sim_type_name : str = "pump_probe"
 
     # Spatial and spectral discretization
     Nz: int = 100
@@ -184,7 +184,6 @@ def main():
     default_case = args.default_case if args.default_case else cases[0]
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    full_run_name = f"{timestamp}_{run_name}" if run_name else timestamp
 
     soa_conditions_file = args.soa_conditions_file if args.soa_conditions_file else args.config_file
     soa_material_file = args.soa_material_file if args.soa_material_file else args.config_file
@@ -200,6 +199,13 @@ def main():
     
     default_sim_params = PumpProbeSoaSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
     default_sim_params.update_from_cli_args(args)
+
+    sim_type_name = default_sim_params.sim_type_name
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    full_run_name = f"{timestamp}__{sim_type_name}__{run_name}" if run_name else f"{timestamp}__{sim_type_name}"
+
+    cases = list(dict.fromkeys(cases))  # Remove duplicates, preserving order
 
     for case in cases:
         if DEBUG:
