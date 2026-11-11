@@ -46,14 +46,21 @@ class DiscreteSpectrum():
     def monochromatic_signal_to_full_spectrum(
         self,
         signal_power : Callable[[float], float],
-        wavelength : float,
+        spectral_position : float,
     ) -> Callable[[float], float]:
-        i = round((wavelength - self.min) * self.N / self.width())
-        if i < 0 or i >= self.N:
-            print(f"Warning: input signal wavelength is outside the simulated spectrum (wavelength={wavelength}, spectrum wavelength range: [{spectrum.min} - {spectrum.max}]). Input signal power will be 0 across whole spectrum.")
+        i = self.get_index(spectral_position)
+        if np.isnan(i):
             return lambda _: np.zeros(self.N)
         signal = lambda t: np.eye(1, self.N, i).ravel() * signal_power(t)
         return signal
+
+    def get_index(self, spectral_position) -> int :
+        i = round((spectral_position - self.min) * self.N / self.width())
+        if i < 0 or i >= self.N:
+            print(f"Warning: trying to get index of spectral position outside of spectrum range (spectral position={spectral_position}, spectrum range: [{spectrum.min} - {spectrum.max}]). Input signal power will be 0 across whole spectrum.")
+            return np.nan
+        return i
+
 
     # Takes a continuous psd function and returns a discrete array
     # of unitless coefficients that are an envelope of the psd
