@@ -4,6 +4,35 @@ from matplotlib.axes import Axes
 from matplotlib.colors import TwoSlopeNorm
 import numpy as np
 from collections.abc import Callable
+import matplotlib.colors as mc
+import colorsys
+
+# ============================================================
+# Helper functions
+# ============================================================
+# Source - https://stackoverflow.com/a/49601444
+# Posted by Ian Hincks, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-11-11, License - CC BY-SA 4.0
+
+def lighten_color(color, amount=0.5):
+    """
+    Lightens the given color by multiplying (1-luminosity) by the given amount.
+    Input can be matplotlib color string, hex string, or RGB tuple.
+
+    Examples:
+    >> lighten_color('g', 0.3)
+    >> lighten_color('#F034A3', 0.6)
+    >> lighten_color((.3,.55,.1), 0.5)
+    """
+    # import matplotlib.colors as mc
+    # import colorsys
+    try:
+        c = mc.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
+
 
 # ============================================================
 # Plot carrier density
@@ -56,6 +85,8 @@ def plot_signal_output(
     label=None,
     ylabel: str = 'Power [W]',
     xlabel: str = 'Time [ps]',
+    color=None,
+    linestyle='-',
     grid : bool = True,
     grid_minor : bool = True,
     title : str = "SOA output",
@@ -75,6 +106,8 @@ def plot_signal_output(
         t * 1e12,
         signal_output,
         label=label,
+        color=color,
+        linestyle=linestyle
     )
 
     ax.set_xlabel(xlabel)
@@ -95,6 +128,8 @@ def plot_signal_output(
         ax.legend()
     if show:
         fig.show()
+    if outfile:
+        fig.savefig(outfile)
     else:
         pass
 

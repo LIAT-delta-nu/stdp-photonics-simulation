@@ -18,7 +18,7 @@ import copy
 import devices.SOA_model_Li_2008 as soa
 import signals.signals as signals
 from spectrum.spectrum import DiscreteSpectrum
-from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha
+from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha, lighten_color
 
 # Cases to be run (can be overriden through cli)
 # Each case name corresponds to a toml table in a toml file with the follwing subtables:
@@ -48,6 +48,8 @@ CASES = [
 @toml_config(section="soa_sim_params")
 @dataclass
 class TwoPulsesSoaSimulationParams:
+    sim_type_name : str = "2 pulses"
+
     # Spatial and spectral discretization
     Nz: int = 100
     Nlambda: int = 101
@@ -131,7 +133,7 @@ def create_two_pulses_simulation(
             pulse_width=sim_params.pulse_1_width,
             t_peak=sim_params.pulse_1_t_peak,
         ),
-        wavelength=sim_params.pulse_1_wavelength
+        spectral_position=sim_params.pulse_1_wavelength
     )
     ## Pulse 2
     pulse_2_signal = spectrum.monochromatic_signal_to_full_spectrum(
@@ -141,7 +143,7 @@ def create_two_pulses_simulation(
             pulse_width=sim_params.pulse_2_width,
             t_peak=sim_params.pulse_2_t_peak,
         ),
-        wavelength=sim_params.pulse_2_wavelength
+        spectral_position=sim_params.pulse_2_wavelength
     )
 
     soa_sim.add_input_signal(pulse_1_signal, sim_params.pulse_1_forward)
@@ -193,9 +195,6 @@ def main():
     cases = args.cases if args.cases else CASES
     default_case = args.default_case if args.default_case else cases[0]
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    full_run_name = f"{timestamp}_{run_name}" if run_name else timestamp
-
     soa_conditions_file = args.soa_conditions_file if args.soa_conditions_file else args.config_file
     soa_material_file = args.soa_material_file if args.soa_material_file else args.config_file
     soa_dims_file = args.soa_dims_file if args.soa_dims_file else args.config_file
@@ -208,8 +207,13 @@ def main():
     
     default_soa_dims=soa.SoaDimensions.from_toml(soa_dims_file,f"{default_case}.soa_dimensions")
     
-    default_sim_params = TwoPulsesSoaSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
+    default_sim_params : TwoPulsesSoaSimulationParams = TwoPulsesSoaSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
     default_sim_params.update_from_cli_args(args)
+
+    sim_type_name = default_sim_params.sim_type_name
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    full_run_name = f"{timestamp}_{sim_type_name}_{run_name}" if run_name else f"{timestamp}_{sim_type_name}"
 
     for case in cases:
         if DEBUG:
@@ -224,7 +228,7 @@ def main():
         soa_conditions = copy.copy(default_soa_conditions)
         soa_material = copy.copy(default_soa_material)
         soa_dims = copy.copy(default_soa_dims)
-        sim_params =  copy.copy(default_sim_params)
+        sim_params : TwoPulsesSoaSimulationParams = copy.copy(default_sim_params)
 
         soa_conditions.update_from_toml(soa_conditions_file,f"{case}.soa_conditions")
         soa_material.update_from_toml(soa_material_file,f"{case}.soa_material")
@@ -286,21 +290,20 @@ def main():
         input_signal_forward = sim_main.input_signals_forward
         z = sim_main.z
 
-        output_power_backward = np.sum(
-            [
-                soa.propagate_power(
-                    input_signal_backward(t), 
-                    sim_main.spectrum,
-                    n,
-                    z,
-                    soa_material,
-                    soa_dims,
-                    forward=False,
-                )[0]    # backwards propagated so output is at [0]
-                for n, t in zip(n.T, t_eval)
-            ],
-            axis=1
-        )
+        output_power_backward_by_wavelength = np.array([
+            soa.propagate_power(
+                input_signal_backward(t), 
+                sim_main.spectrum,
+                n,
+                z,
+                soa_material,
+                soa_dims,
+                forward=False,
+            )[0]    # backwards propagated so output is at [0]
+            for n, t in zip(n.T, t_eval)
+        ])   #[t, wavelength]
+
+        output_power_backward = np.sum(output_power_backward_by_wavelength, axis=1)
 
         if DEBUG:
             stop = time.perf_counter()
@@ -308,19 +311,21 @@ def main():
             print(f"Backward propagation execution time: {elapsed} seconds.")
             start = time.perf_counter()
 
+        output_power_forward_by_wavelength = np.array([
+            soa.propagate_power(
+                input_signal_forward(t),
+                sim_main.spectrum,
+                n,
+                z,
+                soa_material,
+                soa_dims,
+                forward=True,
+            )[-1]   # forwards propagated so output is at [-1]
+            for n, t in zip(n.T, t_eval)
+        ])   #[t, wavelength]
+
         output_power_forward = np.sum(
-            [
-                soa.propagate_power(
-                    input_signal_forward(t),
-                    sim_main.spectrum,
-                    n,
-                    z,
-                    soa_material,
-                    soa_dims,
-                    forward=True,
-                )[-1]   # forwards propagated so output is at [-1]
-                for n, t in zip(n.T, t_eval)
-            ],
+            output_power_forward_by_wavelength,
             axis=1
         )
 
@@ -329,16 +334,32 @@ def main():
             elapsed = stop - start
             print(f"Forward propagation execution time: {elapsed} seconds.")
 
+        ## Backwards input power
+        input_power_backward_by_wavelength = np.array([input_signal_backward(t) for t in t_eval])
+        input_power_backward = np.array(np.sum(input_power_backward_by_wavelength, axis=1)) # sum across spectrum to get total power
 
-        ## Probe input power and gain
-        input_power_backward = np.array(np.sum([input_signal_backward(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
-        # backward_gain_dB = np.array([10*np.log10(p_out/p_in) for p_out, p_in in zip(output_power_backward, input_power_backward)])
+        ## Forward input power
+        input_power_forward_by_wavelength = np.array([input_signal_forward(t) for t in t_eval])
+        input_power_forward = np.array(np.sum(input_power_forward_by_wavelength, axis=1)) # sum across spectrum to get total power
 
-        ## Pump input power
-        input_power_forward = np.array(np.sum([input_signal_forward(t) for t in t_eval], axis=1)) # sum across spectrum to get total power
+        ## Filter input and output power in each pulses wavelength
+        spectrum_index_pulse_1 = sim_main.spectrum.get_index(sim_params.pulse_1_wavelength)
+        spectrum_index_pulse_2 = sim_main.spectrum.get_index(sim_params.pulse_2_wavelength)
 
-        # pump_input_measurements = signals.measure_pulse(input_power_forward, t_eval)
-        # pump_output_measurements = signals.measure_pulse(output_power_forward, t_eval)
+        if sim_params.pulse_1_forward:
+            output_power_pulse_1 = output_power_forward_by_wavelength[:,spectrum_index_pulse_1]
+            input_power_pulse_1 = input_power_forward_by_wavelength[:,spectrum_index_pulse_1]
+        else:
+            output_power_pulse_1 = output_power_backward_by_wavelength[:,spectrum_index_pulse_1]
+            input_power_pulse_1 = input_power_backward_by_wavelength[:,spectrum_index_pulse_1]
+        
+        if sim_params.pulse_2_forward:
+            output_power_pulse_2 = output_power_forward_by_wavelength[:,spectrum_index_pulse_2]
+            input_power_pulse_2 = input_power_forward_by_wavelength[:,spectrum_index_pulse_2]
+        else:
+            output_power_pulse_2 = output_power_backward_by_wavelength[:,spectrum_index_pulse_2]
+            input_power_pulse_2 = input_power_backward_by_wavelength[:,spectrum_index_pulse_2]
+
 
         # ============================================================
         # Save configs
@@ -369,7 +390,10 @@ def main():
                 output_power_forward=output_power_forward,
                 input_power_backward=input_power_backward,
                 output_power_backward=output_power_backward,
-                # probe_gain_dB=backward_gain_dB,
+                input_power_pulse_1=input_power_pulse_1,
+                output_power_pulse_1=output_power_pulse_1,
+                input_power_pulse_2=input_power_pulse_2,
+                output_power_pulse_2=output_power_pulse_2,
         )
         np.savetxt(
             save_dir / "n.csv", 
@@ -384,7 +408,10 @@ def main():
                     output_power_forward,
                     input_power_backward,
                     output_power_backward,
-                    # backward_gain_dB,
+                    input_power_pulse_1,
+                    output_power_pulse_1,
+                    input_power_pulse_2,
+                    output_power_pulse_2,
                 )
             ]
         )
@@ -393,23 +420,29 @@ def main():
             data,
             comments='',
             delimiter=',',
-            header="t[s], Input power forward [W], Output power forward [W], Input power backward [W], Output power backward [W], Probe gain [dB]"
+            header="t[s], Input power forward [W], Output power forward [W], Input power backward [W], Output power backward [W], Input power pulse 1 [W], Output power pulse 1 [W], Input power pulse 2 [W], Output power pulse 2 [W],"
         )
 
+        pulse_1_input_measurements = {"name": "pulse_1_input"}
+        pulse_1_output_measurements = {"name":"pulse_1_output"}
+        pulse_2_input_measurements = {"name": "pulse_2_input"}
+        pulse_2_output_measurements = {"name":"pulse_2_output"}
+        pulse_1_input_measurements |= signals.measure_pulse(input_power_pulse_1, t_eval)
+        pulse_1_output_measurements |= signals.measure_pulse(output_power_pulse_1, t_eval)
+        pulse_2_input_measurements |= signals.measure_pulse(input_power_pulse_2, t_eval)
+        pulse_2_output_measurements |= signals.measure_pulse(output_power_pulse_2, t_eval)
 
-        # TODO: measure pulses characteristics. Maybe filtering by wavelength?
-        # pump_input_measurements["name"] = "input"
-        # pump_output_measurements["name"] = "output"
+        pump_measurements = [
+            pulse_1_input_measurements,
+            pulse_1_output_measurements,
+            pulse_2_input_measurements,
+            pulse_2_output_measurements,
+        ]
 
-        # pump_measurements = [
-        #     pump_input_measurements,
-        #     pump_output_measurements,
-        # ]
-
-        # with open(save_dir / "pump_pulse_info.csv", "w", newline="") as f:
-        #     writer = csv.DictWriter(f, fieldnames=pump_measurements[0].keys())
-        #     writer.writeheader()
-        #     writer.writerows(pump_measurements)
+        with open(save_dir / "pump_pulse_info.csv", "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=pump_measurements[0].keys())
+            writer.writeheader()
+            writer.writerows(pump_measurements)
 
         # ============================================================
         # Create and save plots
@@ -430,7 +463,7 @@ def main():
             t_eval,
             z,
             n,
-            outfile=save_dir / "carrier_density.svg",
+            outfile=save_dir / "carrier_density.png",
         )
 
         # TODO: maybe add backward propagating probe?
@@ -459,7 +492,7 @@ def main():
             ax=ax,
             label="Output",
             title="Forward signal",
-            outfile=save_dir / "forward_input_output.svg",
+            outfile=save_dir / "forward_input_output_total_power.svg",
             show=False,
         )
 
@@ -478,9 +511,61 @@ def main():
             ax=ax,
             label="Output",
             ylabel="Normalized power [a.u.]",
-            outfile=save_dir / "forward_input_output_normalized.svg",
+            outfile=save_dir / "forward_input_output_total_power_normalized.svg",
             show=False,
         )
+
+        ### Forward input and output filtered at pulses wavelengths ###
+        pulse_1_output_color = 'b'
+        pulse_1_input_color = lighten_color(pulse_1_output_color)
+        pulse_2_output_color = 'r'
+        pulse_2_input_color = lighten_color(pulse_2_output_color)
+        input_linestyle = '-'
+        output_linestyle = '--'
+        _, ax = plot_signal_output(
+            t_eval,
+            input_power_pulse_1,
+            label="Input pulse 1",
+            # outfile=save_dir / "forward_input_output.svg",
+            linestyle=input_linestyle,
+            color=pulse_1_input_color,
+            show=False,
+        )
+
+        plot_signal_output(
+            t_eval,
+            output_power_pulse_1,
+            ax=ax,
+            label="Output pulse 1",
+            # outfile=save_dir / "forward_input_output.svg",
+            color=pulse_1_output_color,
+            linestyle=output_linestyle,
+            show=False,
+        )
+
+        plot_signal_output(
+            t_eval,
+            input_power_pulse_2,
+            ax=ax,
+            label="Input pulse 2",
+            # outfile=save_dir / "forward_input_output.svg",
+            linestyle=input_linestyle,
+            color=pulse_2_input_color,
+            show=False,
+        )
+
+        plot_signal_output(
+            t_eval,
+            output_power_pulse_2,
+            ax=ax,
+            label="Output pulse 2",
+            title="2 pulses input and output powers",
+            outfile=save_dir / "forward_input_output.svg",
+            color=pulse_2_output_color,
+            linestyle=output_linestyle,
+            show=False,
+        )
+
 
 
 if __name__ == '__main__':
