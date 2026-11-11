@@ -122,8 +122,6 @@ def plot_signal_output(
         ax.grid(True, "both", alpha=0.3)
     if grid:
         ax.grid(True, "major", alpha=1.0)
-    if outfile:
-        fig.savefig(outfile)
     if label:
         ax.legend()
     if show:
@@ -142,7 +140,8 @@ def plot_signal_output(
 def plot_probe_gain_dB(
     t,
     probe_gain_dB,
-    pump_output=None,
+    signal_power_input=None,
+    signal_power_output=None,
     outfile: str | Path=None,
     show=False,
     figsize: tuple = (6, 4.0),
@@ -151,19 +150,22 @@ def plot_probe_gain_dB(
 
     fig.set_tight_layout(True)
 
+    for signal_power, signal_label, color in zip([signal_power_input, signal_power_output], ["Signal input [a.u.]", "Signal output [a.u.]"], ["lightgrey", "lightcoral"]):
+        if signal_power is not None:
+            line_color= color
+            fill_color=lighten_color(color)
+            y_min, y_max = ax.get_ylim()
+            P_min, P_max = min(signal_power), max(signal_power)
+            signal_normalized = y_min + (signal_power - P_min) / (P_max - P_min) * (y_max - y_min) * 0.9
+            ax.fill_between(t * 1e12, y_min, signal_normalized, color=fill_color, alpha=0.5)
+            ax.plot(t * 1e12, signal_normalized, color=line_color, alpha=0.7, label=signal_label)
+            ax.set_ylim(ymin=y_min, ymax=y_max)
+
     ax.plot(
         t * 1e12,
         probe_gain_dB,
         label="Probe gain",
     )
-
-    if pump_output is not None:
-        y_min, y_max = ax.get_ylim()
-        P_min, P_max = min(pump_output), max(pump_output)
-        pump_output_normalized = y_min + (pump_output - P_min) / (P_max - P_min) * (y_max - y_min) * 0.9
-        ax.fill_between(t * 1e12, y_min, pump_output_normalized, color="lightgrey", alpha=0.5)
-        ax.plot(t * 1e12, pump_output_normalized, color="grey", alpha=0.7, label="Pump output [a.u.]")
-        ax.set_ylim(ymin=y_min, ymax=y_max)
 
     ax.legend()
 

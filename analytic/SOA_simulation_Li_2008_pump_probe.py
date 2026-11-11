@@ -49,6 +49,8 @@ CASES = [
 @toml_config(section="soa_sim_params")
 @dataclass
 class PumpProbeSoaSimulationParams:
+    sim_type_name : str = "2 pulses"
+
     # Spatial and spectral discretization
     Nz: int = 100
     Nlambda: int = 101
@@ -123,13 +125,13 @@ def create_pump_probe_simulation(
             pulse_width=sim_params.pump_pulse_width,
             t_peak=sim_params.pump_t_peak,
         ),
-        wavelength=sim_params.pump_wavelength
+        spectral_position=sim_params.pump_wavelength
     )
     
     ## Probe (backwards)
     probe_signal = spectrum.monochromatic_signal_to_full_spectrum(
         signal_power=lambda _ : sim_params.probe_power,
-        wavelength=sim_params.pump_wavelength
+        spectral_position=sim_params.pump_wavelength
     )
 
     soa_sim.add_input_signal_forward(pump_signal)
@@ -413,14 +415,15 @@ def main():
             t_eval,
             z,
             n,
-            outfile=save_dir / "carrier_density.svg",
+            outfile=save_dir / "carrier_density.png",
         )
 
         ### Probe gain dB ###
         plot_probe_gain_dB(
             t_eval, 
             probe_gain_dB=probe_gain_dB,
-            pump_output=pump_output_power,
+            signal_power_input=pump_input_power,
+            signal_power_output=pump_output_power,
             show=False,
             outfile=save_dir / "probe_gain_dB.svg",
         )
