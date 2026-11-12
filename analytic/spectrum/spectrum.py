@@ -48,10 +48,14 @@ class DiscreteSpectrum():
         signal_power : Callable[[float], float],
         spectral_position : float,
     ) -> Callable[[float], float]:
+        # Note: a local variable is used to force lambda to bind to N by value and not to self by reference
+        # Therefore, if self.N changes, the lambda stays the same
+        # Same goes for using i inside the lambda instead of calling self.get_index()
+        N = self.N  
         i = self.get_index(spectral_position)
         if np.isnan(i):
-            return lambda _: np.zeros(self.N)
-        signal = lambda t: np.eye(1, self.N, i).ravel() * signal_power(t)
+            return lambda _: np.zeros(N)
+        signal = lambda t: np.eye(1, N, i).ravel() * signal_power(t)
         return signal
 
     def get_index(self, spectral_position) -> int :
