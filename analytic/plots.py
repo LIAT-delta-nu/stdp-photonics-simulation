@@ -201,7 +201,7 @@ def plot_modal_gain_minus_alpha_mesh(
     fig.set_tight_layout(True)
 
     vmin = np.min(M) if np.min(M) < 0 else -1000 # irrelevant number since there are no M values below 0
-    vmax = np.max(M) if np.min(M) > 0 else +1000
+    vmax = np.max(M) if np.max(M) > 0 else +1000
 
     custom_norm=TwoSlopeNorm(vmin=vmin, vcenter=0., vmax=vmax)
 
