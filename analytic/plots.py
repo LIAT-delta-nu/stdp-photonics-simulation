@@ -150,22 +150,39 @@ def plot_probe_gain_dB(
 
     fig.set_tight_layout(True)
 
-    for signal_power, signal_label, color in zip([signal_power_input, signal_power_output], ["Signal input [a.u.]", "Signal output [a.u.]"], ["lightgrey", "lightcoral"]):
+    ax.plot(
+        t * 1e12,
+        probe_gain_dB,
+        label="Probe gain",
+        zorder=3,
+    )
+    for signal_power, signal_label, color in zip([signal_power_input, signal_power_output], ["Signal input [a.u.]", "Signal output [a.u.]"], ["C1", "C2"]):
         if signal_power is not None:
             line_color= color
             fill_color=lighten_color(color)
             y_min, y_max = ax.get_ylim()
             P_min, P_max = min(signal_power), max(signal_power)
             signal_normalized = y_min + (signal_power - P_min) / (P_max - P_min) * (y_max - y_min) * 0.9
-            ax.fill_between(t * 1e12, y_min, signal_normalized, color=fill_color, alpha=0.5)
-            ax.plot(t * 1e12, signal_normalized, color=line_color, alpha=0.7, label=signal_label)
+            ax.fill_between(
+                t * 1e12, 
+                y_min, 
+                signal_normalized, 
+                color=fill_color, 
+                alpha=0.5,
+                zorder=1,
+            )
+            ax.plot(
+                t * 1e12, 
+                signal_normalized, 
+                color=line_color, 
+                alpha=0.7, 
+                label=signal_label,
+                linewidth=0.8,
+                # linestyle=':',
+                zorder=2,
+            )
             ax.set_ylim(ymin=y_min, ymax=y_max)
 
-    ax.plot(
-        t * 1e12,
-        probe_gain_dB,
-        label="Probe gain",
-    )
 
     ax.legend()
 
