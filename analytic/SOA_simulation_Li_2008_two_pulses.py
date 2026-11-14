@@ -15,7 +15,9 @@ if DEBUG:
 from config import toml_config
 from config import cli_config
 import copy
-import devices.SOA_model_Li_2008 as soa
+# import devices.SOA_model_Li_2008 as soa
+from devices import SoaSimulationParams, SoaMaterial, SoaConditions, SoaSimulation, SoaDimensions
+from devices.SOA_model_Li_2008 import soa_propagate_power
 import signals.signals as signals
 from spectrum.spectrum import DiscreteSpectrum
 from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha, lighten_color
@@ -47,22 +49,9 @@ CASES = [
 @cli_config
 @toml_config(section="soa_sim_params")
 @dataclass
-class TwoPulsesSoaSimulationParams:
+class TwoPulsesSoaSimulationParams(SoaSimulationParams):
     sim_type_name : str = "2 pulses"
 
-    # Spatial and spectral discretization
-    Nz: int = 100
-    Nlambda: int = 101
-
-    # Simulation time
-    t_start: float = 0.0
-    t_end: float = 3e-9
-
-    # Gain spectrum
-    spectrum_wavelength_min: float = 1500e-9    #TODO: add better default value
-    spectrum_wavelength_max: float = 1600e-9    #TODO: add better default value
-
-    #TODO: implement as list of N pulses
     # Pulse_1
     pulse_1_wavelength: float = 1551e-9
     pulse_1_power_peak: float = 5e-3
@@ -77,79 +66,70 @@ class TwoPulsesSoaSimulationParams:
     pulse_2_t_peak: float = 300e-12
     pulse_2_forward : bool = True
 
-    # # Probe
-    # probe_wavelength: float = 1580e-9
-    # probe_power: float = 40e-9
+    @property
+    def input_signals_forward_list(self):
+        # Input signals
+        ## Pulse 1
+        pulses_forward = []
+        if self.pulse_1_forward:
+            pulse_1_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
+                signal_power=lambda t : signals.gaussian_pulse(
+                    t,
+                    power_peak=self.pulse_1_power_peak,
+                    pulse_width=self.pulse_1_width,
+                    t_peak=self.pulse_1_t_peak,
+                ),
+                spectral_position=self.pulse_1_wavelength
+            )
+            pulses_forward.append(pulse_1_signal)
 
-    # Simulation initial condition
-    n_initial : float | np.ndarray = 6.6e24
+        ## Pulse 2
+        if self.pulse_2_forward:
+            pulse_2_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
+                signal_power=lambda t : signals.gaussian_pulse(
+                    t,
+                    power_peak=self.pulse_2_power_peak,
+                    pulse_width=self.pulse_2_width,
+                    t_peak=self.pulse_2_t_peak,
+                ),
+                spectral_position=self.pulse_2_wavelength
+            )
+            pulses_forward.append(pulse_2_signal)
 
+        return pulses_forward
 
-def create_two_pulses_simulation(
-    soa_conditions: soa.SoaConditions,
-    soa_material: soa.SoaMaterial,
-    soa_dims: soa.SoaDims,
-    sim_params: TwoPulsesSoaSimulationParams
-):
-    # Simulation time span
-    t_span = (sim_params.t_start, sim_params.t_end)
-    # Spatial and spectral discretization:
-    z = np.linspace(0.0, soa_dims.L, sim_params.Nz)
-    spectrum = DiscreteSpectrum(
-        sim_params.spectrum_wavelength_min,
-        sim_params.spectrum_wavelength_max,
-        sim_params.Nlambda,
-    )
+    @property
+    def input_signals_backward_list(self):
+        # Input signals
+        ## Pulse 1
+        pulses_backward = []
+        if not self.pulse_1_forward:
+            pulse_1_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
+                signal_power=lambda t : signals.gaussian_pulse(
+                    t,
+                    power_peak=self.pulse_1_power_peak,
+                    pulse_width=self.pulse_1_width,
+                    t_peak=self.pulse_1_t_peak,
+                ),
+                spectral_position=self.pulse_1_wavelength
+            )
+            pulses_backward.append(pulse_1_signal)
 
-    # Simulation initial condition
-    if isinstance(sim_params.n_initial,(float, int)):
-        n_initial = np.full_like(z, sim_params.n_initial)
-    elif isinstance(sim_params.n_initial,(np.ndarray,)):
-        n_initial = np.array(sim_params.n_initial)
-    else:
-        print("Warning: n_initial for SOA propagation simulation is of unknown type. Using default 6.6e24")
-        n_initial = np.full_like(z, 6.6e24)
+        ## Pulse 2
+        if not self.pulse_2_forward:
+            pulse_2_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
+                signal_power=lambda t : signals.gaussian_pulse(
+                    t,
+                    power_peak=self.pulse_2_power_peak,
+                    pulse_width=self.pulse_2_width,
+                    t_peak=self.pulse_2_t_peak,
+                ),
+                spectral_position=self.pulse_2_wavelength
+            )
+            pulses_backward.append(pulse_2_signal)
 
-    soa_sim = soa.SoaSimulation(
-        soa_conditions=soa_conditions,
-        soa_material=soa_material,
-        soa_dims=soa_dims,
-        z=z,
-        t_span=t_span,
-        input_signals_forward_list=[],
-        input_signals_forward=lambda _ : np.zeros_like(spectrum.spectrum),
-        input_signals_backward_list=[],
-        input_signals_backward=lambda _ : np.zeros_like(spectrum.spectrum),
-        spectrum=spectrum,
-        n_initial=n_initial,
-    )
+        return pulses_backward
 
-    # Input signals
-    ## Pulse 1
-    pulse_1_signal = spectrum.monochromatic_signal_to_full_spectrum(
-        signal_power=lambda t : signals.gaussian_pulse(
-            t,
-            power_peak=sim_params.pulse_1_power_peak,
-            pulse_width=sim_params.pulse_1_width,
-            t_peak=sim_params.pulse_1_t_peak,
-        ),
-        spectral_position=sim_params.pulse_1_wavelength
-    )
-    ## Pulse 2
-    pulse_2_signal = spectrum.monochromatic_signal_to_full_spectrum(
-        signal_power=lambda t : signals.gaussian_pulse(
-            t,
-            power_peak=sim_params.pulse_2_power_peak,
-            pulse_width=sim_params.pulse_2_width,
-            t_peak=sim_params.pulse_2_t_peak,
-        ),
-        spectral_position=sim_params.pulse_2_wavelength
-    )
-
-    soa_sim.add_input_signal(pulse_1_signal, sim_params.pulse_1_forward)
-    soa_sim.add_input_signal(pulse_2_signal, sim_params.pulse_2_forward)
-
-    return soa_sim
 
 def build_parser():
     parser = ArgumentParser()
@@ -201,11 +181,11 @@ def main():
     sim_params_file = args.sim_params_file if args.sim_params_file else args.config_file
 
     # TODO: add cli args for SoaConditions, SoaMaterial and SoaDimensions
-    default_soa_conditions=soa.SoaConditions.from_toml(soa_conditions_file,f"{default_case}.soa_conditions")
+    default_soa_conditions=SoaConditions.from_toml(soa_conditions_file,f"{default_case}.soa_conditions")
     
-    default_soa_material=soa.SoaMaterial.from_toml(soa_material_file,f"{default_case}.soa_material")
+    default_soa_material=SoaMaterial.from_toml(soa_material_file,f"{default_case}.soa_material")
     
-    default_soa_dims=soa.SoaDimensions.from_toml(soa_dims_file,f"{default_case}.soa_dimensions")
+    default_soa_dims=SoaDimensions.from_toml(soa_dims_file,f"{default_case}.soa_dimensions")
     
     default_sim_params : TwoPulsesSoaSimulationParams = TwoPulsesSoaSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
     default_sim_params.update_from_cli_args(args)
@@ -248,11 +228,11 @@ def main():
         sim_params_initial_condition.pulse_1_power_peak = 0.0
         sim_params_initial_condition.pulse_2_power_peak = 0.0
 
-        sim_initial_condition = create_two_pulses_simulation(
-            sim_params=sim_params_initial_condition,
+        sim_initial_condition = SoaSimulation(
             soa_conditions=soa_conditions,
             soa_material=soa_material,
             soa_dims=soa_dims,
+            sim_params=sim_params_initial_condition,
         )
 
         ## Simulate SOA propagation with probe and without inputs to find steady state n(z)
@@ -267,7 +247,7 @@ def main():
         # Use steady state n(z) (without input signals) as initial condition for main simulation
         sim_params_main.n_initial = solution_sim_initial_condition.y[:, -1]
 
-        sim_main = create_two_pulses_simulation(
+        sim_main = SoaSimulation(
             sim_params=sim_params_main,
             soa_conditions=soa_conditions,
             soa_material=soa_material,
@@ -288,12 +268,12 @@ def main():
         if DEBUG:
             start = time.perf_counter()
 
-        input_signal_backward = sim_main.input_signals_backward
-        input_signal_forward = sim_main.input_signals_forward
+        input_signal_backward = sim_main.input_signal_backward
+        input_signal_forward = sim_main.input_signal_forward
         z = sim_main.z
 
         output_power_backward_by_wavelength = np.array([
-            soa.propagate_power(
+            soa_propagate_power(
                 input_signal_backward(t), 
                 sim_main.spectrum,
                 n,
@@ -314,7 +294,7 @@ def main():
             start = time.perf_counter()
 
         output_power_forward_by_wavelength = np.array([
-            soa.propagate_power(
+            soa_propagate_power(
                 input_signal_forward(t),
                 sim_main.spectrum,
                 n,
@@ -336,13 +316,13 @@ def main():
             elapsed = stop - start
             print(f"Forward propagation execution time: {elapsed} seconds.")
 
-        ## Backwards input power
-        input_power_backward_by_wavelength = np.array([input_signal_backward(t) for t in t_eval])
-        input_power_backward = np.array(np.sum(input_power_backward_by_wavelength, axis=1)) # sum across spectrum to get total power
-
         ## Forward input power
         input_power_forward_by_wavelength = np.array([input_signal_forward(t) for t in t_eval])
         input_power_forward = np.array(np.sum(input_power_forward_by_wavelength, axis=1)) # sum across spectrum to get total power
+
+        ## Backwards input power
+        input_power_backward_by_wavelength = np.array([input_signal_backward(t) for t in t_eval])
+        input_power_backward = np.array(np.sum(input_power_backward_by_wavelength, axis=1)) # sum across spectrum to get total power
 
         ## Filter input and output power in each pulses wavelength
         spectrum_index_pulse_1 = sim_main.spectrum.get_index(sim_params.pulse_1_wavelength)
@@ -386,7 +366,7 @@ def main():
             n=n,
         )
         np.savez(
-            save_dir / "input_and_output_powers.csv",
+            save_dir / "input_and_output_powers.npz",
                 t=t_eval,
                 input_power_forward=input_power_forward,
                 output_power_forward=output_power_forward,
@@ -398,8 +378,18 @@ def main():
                 output_power_pulse_2=output_power_pulse_2,
         )
         np.savetxt(
-            save_dir / "n.csv", 
+            save_dir / "n_sim_result.csv", 
             n,
+            delimiter=',',
+        )
+        np.savetxt(
+            save_dir / "n_sim_result_t.csv", 
+            t_eval,
+            delimiter=',',
+        )
+        np.savetxt(
+            save_dir / "n_sim_result_z.csv", 
+            z,
             delimiter=',',
         )
         data = np.block([
@@ -418,7 +408,7 @@ def main():
             ]
         )
         np.savetxt(
-            save_dir / "pump_and_probe_powers_and_gain.csv",
+            save_dir / "pulse_1_and_2_powers.csv",
             data,
             comments='',
             delimiter=',',
@@ -434,17 +424,17 @@ def main():
         pulse_2_input_measurements |= signals.measure_pulse(input_power_pulse_2, t_eval)
         pulse_2_output_measurements |= signals.measure_pulse(output_power_pulse_2, t_eval)
 
-        pump_measurements = [
+        pulse_measurements = [
             pulse_1_input_measurements,
             pulse_1_output_measurements,
             pulse_2_input_measurements,
             pulse_2_output_measurements,
         ]
 
-        with open(save_dir / "pump_pulse_info.csv", "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=pump_measurements[0].keys())
+        with open(save_dir / "pulse_1_and_2_info.csv", "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=pulse_measurements[0].keys())
             writer.writeheader()
-            writer.writerows(pump_measurements)
+            writer.writerows(pulse_measurements)
 
         # ============================================================
         # Create and save plots
@@ -455,7 +445,7 @@ def main():
             n_max=np.max(n),
             wavelength_min=sim_main.spectrum.min,
             wavelength_max=sim_main.spectrum.max,
-            modal_gain=lambda n, wavelength : soa_material.modal_gain(n, wavelength),
+            modal_gain=soa_material.modal_gain,
             alpha = soa_material.alpha,
             outfile=save_dir / "modal_gain.svg",
         )

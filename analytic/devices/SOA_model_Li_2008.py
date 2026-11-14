@@ -1,5 +1,6 @@
 DEBUG = True
 
+from abc import ABC, abstractmethod
 import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass, astuple
@@ -7,6 +8,14 @@ from config.toml_config import toml_config
 from spectrum.spectrum import DiscreteSpectrum
 from scipy.integrate import solve_ivp
 import time
+
+# ============================================================
+# Physical constants
+# ============================================================
+
+q = 1.602176634e-19       # C
+h = 6.62607015e-34        # J s
+c = 299792458.0           # m/s
 
 # ============================================================
 # Modal gain calc
@@ -135,29 +144,191 @@ class SoaDimensions:
         return self.W * self.d * self.L
 
 # ============================================================
-# Physical constants
+# SOA simulation classes
 # ============================================================
 
-q = 1.602176634e-19       # C
-h = 6.62607015e-34        # J s
-c = 299792458.0           # m/s
+@dataclass
+class SoaSimulationParams(ABC):
+    sim_type_name : str = "Generic SOA simulation"
+
+    # Spatial and spectral discretization
+    Nz: int = 101
+    Nlambda: int = 101
+
+    # Simulation time
+    t_start: float = 0.0
+    t_end: float = 3e-9
+
+    # Gain spectrum
+    spectrum_wavelength_min: float = 1500e-9    #TODO: add better default value
+    spectrum_wavelength_max: float = 1700e-9    #TODO: add better default value
+
+    # Simulation initial condition
+    n_initial : float | np.ndarray = 6.6e24
+    
+    @property
+    @abstractmethod
+    def input_signals_forward_list(self) -> list[Callable[[float], np.ndarray]]:
+        pass
+
+    @property
+    @abstractmethod
+    def input_signals_backward_list(self) -> list[Callable[[float], np.ndarray]]:
+        pass
+
+    @property
+    def spectrum(self):
+        return DiscreteSpectrum(
+            self.spectrum_wavelength_min,
+            self.spectrum_wavelength_max,
+            self.Nlambda,
+        )
 
 
-# ============================================================
-# Optical propagation (based on Li et al 2008)
-# ============================================================
+@dataclass(init=False)
+class SoaSimulation():
+    conditions: SoaConditions
+    material: SoaMaterial
+    dims: SoaDimensions
+    sim_type_name: str
+    z: np.ndarray
+    t_span: tuple
+    input_signals_forward_list: list[Callable[[float], float]]
+    input_signals_backward_list: list[Callable[[float], float]]
+    spectrum: DiscreteSpectrum
+    n_initial: float | np.ndarray
 
-# P_in [np.ndarray]: 
-#   arreglo con la potencia por bin espectral
-#
-# spectrum [np.ndarray]: 
-#   arreglo con la frecuencia central de cada bin espectral
-#
-#  z [np.ndarray]: 
-#   posiciones dentro del SOA. Se asume que estan uniformemente 
-#   distribuidas.
+    def __init__(
+        self,
+        soa_conditions: SoaConditions,
+        soa_material: SoaMaterial,
+        soa_dims: SoaDimensions,
+        sim_params : SoaSimulationParams,
+    ):
+        # Simulation time span
+        self.t_span = (sim_params.t_start, sim_params.t_end)
 
-def propagate_power(
+        # Spatial and spectral discretization:
+        self.z = np.linspace(0.0, soa_dims.L, sim_params.Nz)
+        self.spectrum = sim_params.spectrum
+
+        # Simulation initial condition
+        if isinstance(sim_params.n_initial,(float, int)):
+            self.n_initial = np.full_like(self.z, sim_params.n_initial)
+        elif isinstance(sim_params.n_initial,(np.ndarray,)):
+            self.n_initial = np.array(sim_params.n_initial)
+        else:
+            print("Warning: n_initial for SOA propagation simulation is of unknown type. Using default 6.6e24")
+            self.n_initial = np.full_like(self.z, 6.6e24)
+
+        self.conditions=soa_conditions
+        self.material=soa_material
+        self.dims=soa_dims
+
+        # Note: a local variable is used to force lambda to bind to Nlambda by value and not to self by reference
+        # Therefore, if sim_params.Nlambda changes, the lambda stays the same
+        Nlambda = sim_params.Nlambda
+
+        no_signal = lambda _: np.zeros(Nlambda)
+
+        # Initialize signal list with at least one signal (which is 0 for the full spectrum)
+        # so that input_signals_forward() and input_signals_backward() always return
+        # an array
+        self.input_signals_forward_list = [no_signal] + sim_params.input_signals_forward_list.copy()
+        self.input_signals_backward_list = [no_signal] + sim_params.input_signals_backward_list.copy()
+
+    def run(self):
+        if DEBUG:
+            start_1 = time.perf_counter()
+        solution = solve_ivp(
+            fun=self.dn_dt,
+            t_span=self.t_span,
+            y0=self.n_initial,
+            method="BDF",
+            rtol=1e-10,
+            atol=1e0,
+        )
+        if DEBUG:
+            stop_1 = time.perf_counter()
+            elapsed_1 = stop_1 - start_1
+            print(f"solve_ivp execution time: {elapsed_1} seconds.")
+        return solution
+
+    # ============================================================
+    # Carrier-density dynamics (based on Li et al 2008)
+    # ============================================================
+
+    def dn_dt(self, t, n):
+        """
+        dn/dt for every longitudinal SOA section.
+        """
+        ###
+        # dn/dt = injection - recombination - stimulated
+        ###
+
+        # Electrical injection
+        injection = self.conditions.I / (q * self.dims.volume())
+
+        # Recombination
+        recombination = self.material.R_tot(n)
+
+        # Stimulated emission and absorption contribution
+
+        # TODO: optionally, to speed up simulation (how much?), gm(n, lambda) 
+        # can be calculated in this function and be passed to the propagate 
+        # power function, so that it is not calculated again.
+        gm = np.array([self.material.modal_gain(n_i, self.spectrum.spectrum) for n_i in n] )
+        P_forward = self.propagate_power(
+            t,
+            n,
+            forward=True,
+        )
+        P_backward = self.propagate_power(
+            t,
+            n,
+            forward=False,
+        )
+        P = P_forward + P_backward  # shape (n_z, n_spectrum), so indexing is P[z, lambda]
+        E_photon = h * c / self.spectrum.spectrum
+
+        stimulated  = np.sum(gm * P / E_photon, axis=1) / self.dims.area()
+
+        return injection - recombination - stimulated
+
+    # ============================================================
+    # Optical propagation (based on Li et al 2008)
+    # ============================================================
+    
+    def propagate_power(self, t : float, n : np.ndarray, forward : bool = True):
+        return soa_propagate_power(
+            P_in = self.input_signal(t, forward),
+            spectrum=self.spectrum,
+            n=n,
+            z=self.z,
+            material=self.material,
+            dims=self.dims,
+            forward=forward
+        )
+
+    # ============================================================
+    # Input signals
+    # ============================================================
+
+    def input_signal(self, t, forward: bool) -> np.ndarray:
+        input_signals_list = self.input_signals_forward_list if forward else self.input_signals_backward_list
+        return np.sum(
+            np.array([signal(t) for signal in input_signals_list]),
+            axis=0
+        )
+
+    def input_signal_forward(self, t) -> np.ndarray:
+        return self.input_signal(t, forward=True)
+
+    def input_signal_backward(self, t) -> np.ndarray:
+        return self.input_signal(t, forward=False)
+
+
+def soa_propagate_power(
     P_in : np.ndarray, 
     spectrum : DiscreteSpectrum, 
     n : np.ndarray, 
@@ -178,9 +349,23 @@ def propagate_power(
     f0 = -(gm-alpha)   (asumido constante para dz suficientemente chico)
     g0 = W*d*B*n^2*(hc/lambda)beta_eff/2/N_spectrum  (asumido constante para dz suficientemente chico)
 
+    P_in : np.ndarray
+        arreglo con la potencia por bin espectral
+    
+    spectrum : np.ndarray
+        arreglo con la frecuencia central de cada bin espectral
+    
+    z : np.ndarray
+        posiciones dentro del SOA. Se asume que estan uniformemente 
+        distribuidas.
+
+    n : np.ndarray
+        carrier density (n[i] is carrier density in position z[i])
+
     forward : bool
         If True, P_in is propagated from z[0] to z[Nz-1], where Nz=len(z)
         If False, P_in is propagated from z[Nz-1] to z[0].
+
     returns:
         array P of shape (n_z, n_spectrum), so indexing is P[z, lambda], 
         so P[i, j] is the propagated power in z[i] at wavelength spectrum[j].
@@ -210,120 +395,9 @@ def propagate_power(
     return P
 
 
-# ============================================================
-# Carrier-density dynamics
-# ============================================================
-
-def dn_dt(
-    t, 
-    n,
-    condition: SoaConditions,
-    material: SoaMaterial,
-    dims: SoaDimensions,
-    input_signal_forward : Callable[[float], np.ndarray],
-    input_signal_backward : Callable[[float], np.ndarray],
-    spectrum: DiscreteSpectrum,
-    z: np.ndarray,
-):
-    """
-    dn/dt for every longitudinal SOA section.
-    """
-    ###
-    # dn/dt = injection - recombination - stimulated
-    ###
-
-    # Electrical injection
-    injection = condition.I / (q * dims.volume())
-
-    # Recombination
-    recombination = material.R_tot(n)
-
-    # Stimulated emission and absorption contribution
-
-    # TODO: optionally, to speed up simulation (how much?), gm(n, lambda) 
-    # can be calculated in this function and be passed to the propagate 
-    # power function, so that it is not calculated again.
-    gm = np.array([material.modal_gain(n_i, spectrum.spectrum) for n_i in n] )
-    P_forward = propagate_power(
-        input_signal_forward(t),
-        spectrum,
-        n,
-        z,
-        material,
-        dims,
-        forward=True,
-    )
-    P_backward = propagate_power(
-        input_signal_backward(t),
-        spectrum,
-        n,
-        z,
-        material,
-        dims,
-        forward=False,
-    )
-    P = P_forward + P_backward  # shape (n_z, n_spectrum), so indexing is P[z, lambda]
-    E_photon = h * c / spectrum.spectrum
-
-    stimulated  = np.sum(gm * P / E_photon, axis=1) / dims.area()
-
-    return injection - recombination - stimulated
 
 
-@dataclass
-class SoaSimulation():
-    soa_conditions: SoaConditions
-    soa_material: SoaMaterial
-    soa_dims: SoaDimensions
-    z: np.ndarray
-    t_span: tuple
-    input_signals_forward_list: list[Callable[[float], float]]
-    input_signals_forward: Callable[[float], float]
-    input_signals_backward_list: list[Callable[[float], float]]
-    input_signals_backward: Callable[[float], float]
-    spectrum: DiscreteSpectrum
-    n_initial: float | np.ndarray
 
-    def run(self):
-        if DEBUG:
-            start_1 = time.perf_counter()
-
-        solution = solve_ivp(
-            fun=dn_dt,
-            t_span=self.t_span,
-            y0=self.n_initial,
-            args=(
-                self.soa_conditions,
-                self.soa_material,
-                self.soa_dims,
-                self.input_signals_forward,
-                self.input_signals_backward,
-                self.spectrum,
-                self.z,
-            ),
-            method="BDF",
-            rtol=1e-10,
-            atol=1e0,
-        )
-        if DEBUG:
-            stop_1 = time.perf_counter()
-            elapsed_1 = stop_1 - start_1
-            print(f"solve_ivp execution time: {elapsed_1} seconds.")
-        return solution
-
-    def add_input_signal(self, input_signal: Callable[[float], np.ndarray], forward: bool):
-        if forward:
-            self.add_input_signal_forward(input_signal)
-        else:
-            self.add_input_signal_backward(input_signal)
-
-    def add_input_signal_forward(self, input_signal_forward: Callable[[float], np.ndarray]):
-        self.input_signals_forward_list.append(input_signal_forward)
-        self.input_signals_forward = lambda t: np.sum(np.array([signal(t) for signal in self.input_signals_forward_list]), axis=0)
-
-    def add_input_signal_backward(self, input_signal_backward: Callable[[float], np.ndarray]):
-        self.input_signals_backward_list.append(input_signal_backward)
-        self.input_signals_backward = lambda t: np.sum(np.array([signal(t) for signal in self.input_signals_backward_list]), axis=0)
 
 if __name__ == '__main__':
     pass

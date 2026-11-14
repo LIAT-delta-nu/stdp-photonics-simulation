@@ -16,7 +16,8 @@ if DEBUG:
 from config import toml_config
 from config import cli_config
 import copy
-import devices.SOA_model_Li_2008 as soa
+from devices import SoaSimulationParams, SoaMaterial, SoaConditions, SoaSimulation, SoaDimensions
+from devices.SOA_model_Li_2008 import soa_propagate_power
 import signals.signals as signals
 from spectrum.spectrum import DiscreteSpectrum
 from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha
@@ -48,20 +49,8 @@ CASES = [
 @cli_config
 @toml_config(section="soa_sim_params")
 @dataclass
-class PumpProbeSoaSimulationParams:
+class PumpProbeSoaSimulationParams(SoaSimulationParams):
     sim_type_name : str = "pump_probe"
-
-    # Spatial and spectral discretization
-    Nz: int = 100
-    Nlambda: int = 101
-
-    # Simulation time
-    t_start: float = 0.0
-    t_end: float = 3e-9
-
-    # Gain spectrum
-    spectrum_wavelength_min: float = 1500e-9    #TODO: add better default value
-    spectrum_wavelength_max: float = 1600e-9    #TODO: add better default value
 
     # Pump
     pump_wavelength: float = 1551e-9
@@ -73,71 +62,38 @@ class PumpProbeSoaSimulationParams:
     probe_wavelength: float = 1580e-9
     probe_power: float = 40e-9
 
-    # Simulation initial condition
-    n_initial : float | np.ndarray = 6.6e24
+    @property
+    def input_signals_forward_list(self):
+        # Pump (forward)
+        ## Note: local vars are used to force lambda to bind to the local vars by value and not to self by reference
+        ## Therefore, if self.power_peak, self.pulse_width, etc. changes, the lambda stays the same
+        pump_power_peak=self.pump_power_peak
+        pump_pulse_width=self.pump_pulse_width
+        pump_t_peak=self.pump_t_peak
+        pump_wavelength=self.pump_wavelength
+        pump_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
+            signal_power=lambda t : signals.gaussian_pulse(
+                t,
+                power_peak=pump_power_peak,
+                pulse_width=pump_pulse_width,
+                t_peak=pump_t_peak,
+            ),
+            spectral_position=pump_wavelength
+        )
+        return [pump_signal]
 
-
-def create_pump_probe_simulation(
-    soa_conditions: soa.SoaConditions,
-    soa_material: soa.SoaMaterial,
-    soa_dims: soa.SoaDims,
-    sim_params: PumpProbeSoaSimulationParams
-):
-    # Simulation time span
-    t_span = (sim_params.t_start, sim_params.t_end)
-    # Spatial and spectral discretization:
-    z = np.linspace(0.0, soa_dims.L, sim_params.Nz)
-    spectrum = DiscreteSpectrum(
-        sim_params.spectrum_wavelength_min,
-        sim_params.spectrum_wavelength_max,
-        sim_params.Nlambda,
-    )
-
-    # Simulation initial condition
-    if isinstance(sim_params.n_initial,(float, int)):
-        n_initial = np.full_like(z, sim_params.n_initial)
-    elif isinstance(sim_params.n_initial,(np.ndarray,)):
-        n_initial = np.array(sim_params.n_initial)
-    else:
-        print("Warning: n_initial for SOA propagation simulation is of unknown type. Using default 6.6e24")
-        n_initial = np.full_like(z, 6.6e24)
-
-    soa_sim = soa.SoaSimulation(
-        soa_conditions=soa_conditions,
-        soa_material=soa_material,
-        soa_dims=soa_dims,
-        z=z,
-        t_span=t_span,
-        input_signals_forward_list=[],
-        input_signals_forward=lambda _ : 0,
-        input_signals_backward_list=[],
-        input_signals_backward=lambda _ : 0,
-        spectrum=spectrum,
-        n_initial=n_initial,
-    )
-
-    # Pump and probe input signals:
-    ## Pump (forward)
-    pump_signal = spectrum.monochromatic_signal_to_full_spectrum(
-        signal_power=lambda t : signals.gaussian_pulse(
-            t,
-            power_peak=sim_params.pump_power_peak,
-            pulse_width=sim_params.pump_pulse_width,
-            t_peak=sim_params.pump_t_peak,
-        ),
-        spectral_position=sim_params.pump_wavelength
-    )
-    
-    ## Probe (backwards)
-    probe_signal = spectrum.monochromatic_signal_to_full_spectrum(
-        signal_power=lambda _ : sim_params.probe_power,
-        spectral_position=sim_params.pump_wavelength
-    )
-
-    soa_sim.add_input_signal_forward(pump_signal)
-    soa_sim.add_input_signal_backward(probe_signal)
-
-    return soa_sim
+    @property
+    def input_signals_backward_list(self):
+        # Probe (backwards)
+        ## Note: local vars are used to force lambda to bind to the local vars by value and not to self by reference
+        ## Therefore, if self.probe_power, etc. changes, the lambda stays the same
+        probe_power=self.probe_power
+        pump_wavelength=self.pump_wavelength
+        probe_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
+            signal_power=lambda _ : probe_power,
+            spectral_position=pump_wavelength
+        )
+        return [probe_signal]
 
 def build_parser():
     parser = ArgumentParser()
@@ -191,11 +147,11 @@ def main():
     sim_params_file = args.sim_params_file if args.sim_params_file else args.config_file
 
     # TODO: add cli args for SoaConditions, SoaMaterial and SoaDimensions
-    default_soa_conditions=soa.SoaConditions.from_toml(soa_conditions_file,f"{default_case}.soa_conditions")
+    default_soa_conditions=SoaConditions.from_toml(soa_conditions_file,f"{default_case}.soa_conditions")
     
-    default_soa_material=soa.SoaMaterial.from_toml(soa_material_file,f"{default_case}.soa_material")
+    default_soa_material=SoaMaterial.from_toml(soa_material_file,f"{default_case}.soa_material")
     
-    default_soa_dims=soa.SoaDimensions.from_toml(soa_dims_file,f"{default_case}.soa_dimensions")
+    default_soa_dims=SoaDimensions.from_toml(soa_dims_file,f"{default_case}.soa_dimensions")
     
     default_sim_params = PumpProbeSoaSimulationParams.from_toml(sim_params_file,f"{default_case}.soa_sim_params")
     default_sim_params.update_from_cli_args(args)
@@ -235,7 +191,7 @@ def main():
         sim_params_initial_condition.t_end = 3e-3
         sim_params_initial_condition.pump_power_peak = 0.0
 
-        sim_initial_condition = create_pump_probe_simulation(
+        sim_initial_condition = SoaSimulation(
             sim_params=sim_params_initial_condition,
             soa_conditions=soa_conditions,
             soa_material=soa_material,
@@ -254,7 +210,7 @@ def main():
         # Use steady state n(z) (with pump and without probe) as initial condition for main simulation
         sim_params_main.n_initial = solution_sim_initial_condition.y[:, -1]
 
-        sim_main = create_pump_probe_simulation(
+        sim_main = SoaSimulation(
             sim_params=sim_params_main,
             soa_conditions=soa_conditions,
             soa_material=soa_material,
@@ -275,13 +231,13 @@ def main():
         if DEBUG:
             start_probe = time.perf_counter()
 
-        probe_signal = sim_main.input_signals_backward # probe is propagated backwards
-        pump_signal = sim_main.input_signals_forward # pump is propagated forward
+        probe_signal = sim_main.input_signal_backward # probe is propagated backwards
+        pump_signal = sim_main.input_signal_forward # pump is propagated forward
         z = sim_main.z
 
         probe_output_power = np.sum(
             [
-                soa.propagate_power(
+                soa_propagate_power(
                     probe_signal(t), 
                     sim_main.spectrum,
                     n,
@@ -303,7 +259,7 @@ def main():
 
         pump_output_power = np.sum(
             [
-                soa.propagate_power(
+                soa_propagate_power(
                     pump_signal(t),  # pump is propagated forward
                     sim_main.spectrum,
                     n,
@@ -411,7 +367,7 @@ def main():
             n_max=np.max(n),
             wavelength_min=sim_main.spectrum.min,
             wavelength_max=sim_main.spectrum.max,
-            modal_gain=lambda n, wavelength : soa_material.modal_gain(n, wavelength),
+            modal_gain=soa_material.modal_gain,
             alpha = soa_material.alpha,
             outfile=save_dir / "modal_gain.svg",
         )
