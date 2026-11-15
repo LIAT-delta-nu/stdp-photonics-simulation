@@ -142,8 +142,7 @@ class ExperimentSetup:
         )
 
 
-def build_parser(sim_params_class: type[SoaSimulationParams]):
-    parser = ArgumentParser()
+def add_args_to_parser(parser:ArgumentParser, sim_params_class: type[SoaSimulationParams]):
 
     parser.add_argument(
         "--run-name",
@@ -172,4 +171,3 @@ def build_parser(sim_params_class: type[SoaSimulationParams]):
     for c in [sim_params_class, SoaMaterial, SoaDimensions, SoaConditions]:
         c.add_cli_args_to_parser(parser)
 
-    return parser
