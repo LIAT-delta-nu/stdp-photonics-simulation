@@ -210,6 +210,7 @@ def plot_modal_gain_minus_alpha_mesh(
     N, 
     Lambdas, 
     M,
+    title="gm(n,λ)-α",
     show = False,
     outfile: str | Path = None, 
     figsize: tuple = (4.0, 4.0),
@@ -232,7 +233,7 @@ def plot_modal_gain_minus_alpha_mesh(
     )
 
     ax.set_xscale("log")
-    ax.set_title("gm(n,λ)-α")
+    ax.set_title(title)
 
     fig.colorbar(im, ax=ax, label="m⁻¹")
 
@@ -260,7 +261,8 @@ def plot_modal_gain_minus_alpha(
     modal_gain: Callable[[float,float],float],
     alpha,
     n_n=50, 
-    n_wavelength=50, 
+    n_wavelength=50,
+    title="gm(n,λ)-α",
     figsize=(6.0,4.0),
     show=False,
     outfile=None,
@@ -274,4 +276,4 @@ def plot_modal_gain_minus_alpha(
     Ns, WLs = np.meshgrid(ns_for_mesh, wavelengths_for_mesh)
     M = modal_gain(Ns, WLs) - alpha
 
-    return plot_modal_gain_minus_alpha_mesh(Ns, WLs, M, show=show, outfile=outfile, figsize=figsize)
+    return plot_modal_gain_minus_alpha_mesh(Ns, WLs, M, title=title, show=show, outfile=outfile, figsize=figsize)
