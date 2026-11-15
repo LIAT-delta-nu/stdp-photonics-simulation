@@ -67,6 +67,7 @@ def plot_carrier_density(
 
     if outfile:
         fig.savefig(outfile)
+        plt.close(fig)
 
     if show:
         fig.show()
@@ -128,6 +129,7 @@ def plot_signal_output(
         fig.show()
     if outfile:
         fig.savefig(outfile)
+        plt.close(fig)
     else:
         pass
 
@@ -199,6 +201,7 @@ def plot_probe_gain_dB(
 
     if outfile:
         fig.savefig(outfile)
+        plt.close(fig)
 
     return fig, ax
 
@@ -247,6 +250,7 @@ def plot_modal_gain_minus_alpha_mesh(
 
     if outfile:
         fig.savefig(outfile)
+        plt.close(fig)
 
     if show:
         fig.show()
