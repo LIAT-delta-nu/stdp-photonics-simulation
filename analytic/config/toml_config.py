@@ -24,7 +24,7 @@ def toml_config(section: str | None = None):
 
             return cls(**data)
 
-        def update_from_toml(self, path: str | Path, section: str=section):
+        def update_from_toml(self, path: str | Path, section: str=section) -> Self:
             with open(path, "rb") as f:
                 data = tomllib.load(f)
 
@@ -36,6 +36,8 @@ def toml_config(section: str | None = None):
             for key, value in data.items():
                 if key in self.__dataclass_fields__:
                     setattr(self, key, value)
+
+            return self
 
         def to_toml(self, path: str | Path, section: str=section):
             path = Path(path)

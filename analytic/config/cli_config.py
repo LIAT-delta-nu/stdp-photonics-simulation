@@ -45,10 +45,11 @@ def cli_config(cls):
                 required=False,
             )
 
-    def update_from_cli_args(self, args: argparse.Namespace):
+    def update_from_cli_args(self, args: argparse.Namespace) -> Self:
         for field in fields(self):
             if hasattr(args, field.name):
                 setattr(self, field.name, getattr(args, field.name))
+        return self
 
     cls.add_cli_args_to_parser = add_cli_args_to_parser
     cls.update_from_cli_args = update_from_cli_args

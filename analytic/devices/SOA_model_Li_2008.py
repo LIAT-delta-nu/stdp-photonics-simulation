@@ -5,6 +5,7 @@ import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass, astuple
 from config.toml_config import toml_config
+from config.cli_config import cli_config
 from spectrum.spectrum import DiscreteSpectrum
 from scipy.integrate import solve_ivp
 import time
@@ -83,12 +84,13 @@ def _R_tot(
 # ============================================================
 # SOA description dataclasses
 # ============================================================
-
+@cli_config
 @toml_config(section="soa_conditions")
 @dataclass
 class SoaConditions:
     I: float = 87e-3
 
+@cli_config
 @toml_config(section="soa_material")
 @dataclass()
 class SoaMaterial:
@@ -130,6 +132,7 @@ class SoaMaterial:
     def R_tot(self, n):
         return _R_tot(n, self.A, self.B, self.C)
 
+@cli_config
 @toml_config(section="soa_dimensions")
 @dataclass()
 class SoaDimensions:
@@ -253,6 +256,38 @@ class SoaSimulation():
             elapsed_1 = stop_1 - start_1
             print(f"solve_ivp execution time: {elapsed_1} seconds.")
         return solution
+
+    def get_powers_from_solution(
+            self,
+            n : np.ndarray, 
+            t_eval : np.ndarray,
+        ) -> tuple[np.ndarray]:
+
+        if DEBUG:
+            start = time.perf_counter()
+
+        power_backward_by_wavelength = np.array([
+            self.propagate_power(t, n_, forward=False)
+            for n_, t in zip(n.T, t_eval)
+        ])   #[t, z, wavelength]
+
+        if DEBUG:
+            stop = time.perf_counter()
+            elapsed = stop - start
+            print(f"Backward propagation execution time: {elapsed} seconds.")
+            start = time.perf_counter()
+
+        power_forward_by_wavelength = np.array([
+            self.propagate_power(t, n_, forward=True)
+            for n_, t in zip(n.T, t_eval)
+        ])   #[t, z, wavelength]
+
+        if DEBUG:
+            stop = time.perf_counter()
+            elapsed = stop - start
+            print(f"Forward propagation execution time: {elapsed} seconds.")
+
+        return power_forward_by_wavelength, power_backward_by_wavelength, power_forward_by_wavelength+power_backward_by_wavelength
 
     # ============================================================
     # Carrier-density dynamics (based on Li et al 2008)
