@@ -2,12 +2,8 @@ DEBUG = True
 OUTDIR = "./out"
 
 import numpy as np
-import matplotlib.pyplot as plt
-import csv
 from dataclasses import dataclass, field
-from collections.abc import Callable
 from collections import namedtuple
-from datetime import datetime
 from pathlib import Path
 from argparse import ArgumentParser
 from experiment_setup import ExperimentSetup, add_args_to_parser
@@ -17,7 +13,7 @@ from results_manager import (
     save_power, 
     save_power_spectral, 
     save_input_output_power, 
-    save_input_output_power_spectral, 
+    # save_input_output_power_spectral, 
     save_t_and_z,
     save_pulse_measurements,
 )
@@ -30,6 +26,8 @@ import copy
 from devices import SoaSimulationParams, SoaMaterial, SoaConditions, SoaSimulation, SoaDimensions
 import signals.signals as signals
 from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha, lighten_color
+
+from matplotlib.lines import Line2D
 
 # Cases to be run (can be overriden through cli)
 # Each case name corresponds to a toml table in a toml file with the follwing subtables:
@@ -75,7 +73,7 @@ class TwoPulsesSweepSoaSimulationParams(SoaSimulationParams):
     pulse_2_forward : bool = True
     pulse_2_t_peak_min : float = 100e-12
     pulse_2_t_peak_max : float = 400e-12
-    pulse_2_t_peak_N : float = 4
+    pulse_2_t_peak_N : int = 4
 
     pulse_2_t_peak_sweep : np.ndarray = field(init=False)
 
@@ -581,6 +579,21 @@ def main():
             show=False,
         )
 
+        input_output_handles = [
+            Line2D([0], [0], color=pulse_1_input_color, linestyle=input_linestyle, label="Input"),
+            Line2D([0], [0], color=pulse_1_output_color, linestyle=output_linestyle, label="Output"),
+        ]
+
+        legend_input_output = ax.legend(
+            handles=input_output_handles,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0),
+        )
+        # Preserve the first legend
+        ax.add_artist(legend_input_output)
+
+        delta_t_handles = []
+
         for i, (
                 t, 
                 output_power_pulse_2, 
@@ -599,10 +612,15 @@ def main():
             pulse_2_output_color = f'C{color_idx}'
             pulse_2_input_color = lighten_color(pulse_2_output_color)
 
+            
+            delta_t_handles.append(
+                Line2D([0], [0], color=pulse_2_output_color, lw=2, label=f"Δt={delta_t_peak*1e12:.0f} ps")
+            )
+
             plot_signal_output(
                 t,
                 input_power_pulse_2,
-                label=f"Pulse 2 input (Δt_peak={delta_t_peak*1e12:.0f} ps)",
+                # label=f"Pulse 2 input ()",
                 linestyle=input_linestyle,
                 color=pulse_2_input_color,
                 ax=ax,
@@ -613,15 +631,22 @@ def main():
                 t,
                 output_power_pulse_2,
                 ax=ax,
-                label=f"Pulse 2 output (Δt_peak={delta_t_peak*1e12:.0f} ps)",
+                # label=f"Pulse 2 output (Δt_peak={delta_t_peak*1e12:.0f} ps)",
                 # outfile=save_dir / "forward_input_output.svg",
                 linestyle=output_linestyle,
                 color=pulse_2_output_color,
                 show=False,
             )
 
-            ax.axvline(x=t_peak_pulse_2*1e12, color=pulse_2_output_color)
+            ax.axvline(x=t_peak_pulse_2*1e12, color=pulse_2_output_color, linewidth=0.5, linestyle='-.')
+        ax.legend(
+            handles=delta_t_handles,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 0.5),
+        )
 
+        fig.tight_layout()
+        fig.savefig("plot.png", bbox_inches="tight")
         fig.savefig(save_dir/f"sweep_output_powers.svg")
 
 

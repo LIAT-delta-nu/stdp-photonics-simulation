@@ -50,5 +50,5 @@ pulse_2_power_peak = 5e-3
 pulse_2_width = 65e-12
 pulse_2_forward = true
 pulse_2_t_peak_min = 300e-12
-pulse_2_t_peak_max = 700e-12
-pulse_2_t_peak_N = 4
+pulse_2_t_peak_max = 1000e-12
+pulse_2_t_peak_N = 8
