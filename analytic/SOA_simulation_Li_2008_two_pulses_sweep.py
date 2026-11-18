@@ -5,7 +5,6 @@ import numpy as np
 from dataclasses import dataclass, field
 from collections import namedtuple
 from collections.abc import Callable
-from collections.abc import Callable
 from pathlib import Path
 from argparse import ArgumentParser
 from experiment_setup import ExperimentSetup, add_args_to_parser
@@ -27,7 +26,14 @@ from config import cli_config
 import copy
 from devices import SoaSimulationParams, SoaMaterial, SoaConditions, SoaSimulation, SoaDimensions
 import signals.signals as signals
-from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha, lighten_color
+from plots import (
+    plot_carrier_density, 
+    plot_probe_gain_dB, 
+    plot_signal_output, 
+    plot_modal_gain_minus_alpha, 
+    lighten_color,
+    plot_energy_vs_delta_t
+)
 
 from matplotlib.lines import Line2D
 
