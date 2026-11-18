@@ -158,16 +158,19 @@ class TwoPulsesSweepSoaSimulationParams(SoaSimulationParams):
             pulses_backward.append(pulse_1_signal)
 
         ## Pulse 2
-        i = self.i
         if not self.pulse_2_forward:
+            pulse_2_t_peak = self.pulse_2_t_peak
+            pulse_2_power_peak = self.pulse_2_power_peak
+            pulse_2_wavelength = self.pulse_2_wavelength
+            pulse_2_width = self.pulse_2_width
             pulse_2_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
                 signal_power=lambda t : signals.gaussian_pulse(
                     t,
-                    power_peak=self.pulse_2_power_peak,
-                    pulse_width=self.pulse_2_width,
-                    t_peak=self.pulse_2_t_peak_sweep[i],
+                    power_peak=pulse_2_power_peak,
+                    pulse_width=pulse_2_width,
+                    t_peak=pulse_2_t_peak,
                 ),
-                spectral_position=self.pulse_2_wavelength
+                spectral_position=pulse_2_wavelength
             )
             pulses_backward.append(pulse_2_signal)
 
