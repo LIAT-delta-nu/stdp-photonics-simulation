@@ -34,6 +34,62 @@ def lighten_color(color, amount=0.5):
     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
+# TODO: add the decorator to all plot functions
+def standard_x_vs_y_plot(
+    default_title : str = None, 
+    default_x_label : str = None, 
+    default_y_label : str = None
+):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(
+            *args,
+            title : str = default_title,
+            show : bool=False,
+            outfile: str | Path = None,
+            grid : bool = True,
+            grid_minor : bool = True,
+            xlabel : str = default_x_label,
+            ylabel : str = default_y_label,
+            ax: Axes = None,
+            figsize: tuple = (4.0, 4.0),
+            **kwargs
+        ):
+            if ax is None:
+                fig, ax = plt.subplots(figsize=figsize)
+            else:
+                fig = ax.figure
+
+            fig.set_tight_layout(True)
+
+            func(*args, ax=ax, **kwargs)
+
+            if xlabel is not None:
+                ax.set_xlabel(xlabel)
+            if ylabel is not None:
+                ax.set_ylabel(ylabel)
+            if title:
+                ax.set_title(title)
+
+            ax.tick_params(which="major", length=6, width=1)
+            ax.tick_params(which="minor", length=3, width=0.7)
+
+            if grid_minor:
+                ax.minorticks_on()
+                ax.grid(True, "both", alpha=0.3)
+            if grid:
+                ax.grid(True, "major", alpha=1.0)
+            if show:
+                fig.show()
+            if outfile is not None:
+                fig.savefig(outfile)
+                plt.close(fig)
+
+            return fig, ax
+
+        return wrapper
+    return decorator
+
 
 # ============================================================
 # Plot carrier density
