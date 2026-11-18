@@ -83,13 +83,20 @@ class TwoPulsesSweepSoaSimulationParams(SoaSimulationParams):
     pulse_2_t_peak_max : float = 400e-12
     pulse_2_t_peak_N : int = 4
 
-    pulse_2_t_peak_sweep : np.ndarray = field(init=False)
-
     i : int = 0 # sweep iteration. This determines the time of the 2 pulse
                 # current_iteration_pulse_2_t_peak = self.pulse_2_t_peak_sweep[self.i]
     
-    def __post_init__(self):
-        self.pulse_2_t_peak_sweep = np.linspace(self.pulse_2_t_peak_min, self.pulse_2_t_peak_max, self.pulse_2_t_peak_N)
+    count=0
+    @property
+    def pulse_2_t_peak_sweep(self):
+        if DEBUG:
+            print(f"{self.count} calls to linspace to create sweep")
+            self.count +=1
+        return np.linspace(
+            self.pulse_2_t_peak_min,
+            self.pulse_2_t_peak_max,
+            self.pulse_2_t_peak_N,
+        )
 
     @property
     def pulse_2_t_peak(self):
@@ -113,16 +120,21 @@ class TwoPulsesSweepSoaSimulationParams(SoaSimulationParams):
             pulses_forward.append(pulse_1_signal)
 
         ## Pulse 2
-        i = self.i
         if self.pulse_2_forward:
+            
+            pulse_2_t_peak = self.pulse_2_t_peak
+            pulse_2_power_peak = self.pulse_2_power_peak
+            pulse_2_wavelength = self.pulse_2_wavelength
+            pulse_2_width = self.pulse_2_width
+
             pulse_2_signal = self.spectrum.monochromatic_signal_to_full_spectrum(
                 signal_power=lambda t : signals.gaussian_pulse(
                     t,
-                    power_peak=self.pulse_2_power_peak,
-                    pulse_width=self.pulse_2_width,
-                    t_peak=self.pulse_2_t_peak_sweep[i],
+                    power_peak=pulse_2_power_peak,
+                    pulse_width=pulse_2_width,
+                    t_peak=pulse_2_t_peak,
                 ),
-                spectral_position=self.pulse_2_wavelength
+                spectral_position=pulse_2_wavelength
             )
             pulses_forward.append(pulse_2_signal)
 
@@ -567,7 +579,7 @@ def main():
         pulse_1_output_color = 'k'
         pulse_1_input_color = lighten_color(pulse_1_output_color)
         input_linestyle = '-'
-        output_linestyle = '--'
+        output_linestyle = '-'
 
         t = results_sim_main_sweep[-1].t
         input_power_pulse_1 = results_sim_main_sweep[-1].input_power_pulse_1
