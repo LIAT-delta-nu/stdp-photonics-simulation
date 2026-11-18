@@ -551,6 +551,12 @@ def main():
         deltas_t_peaks = [result.sim_params.pulse_2_t_peak - result.sim_params.pulse_1_t_peak for result in results_sim_main_sweep]
         energies_pulse_2 = [result.output_pulse_2_measurements["energy"] for result in results_sim_main_sweep]
 
+        plot_energy_vs_delta_t(
+            energy=energies_pulse_2, 
+            delta_t=deltas_t_peaks,
+            outfile=save_dir / "energy_vs_delta_t.svg"
+        )
+
         # Forward input and output filtered at pulses wavelengths
         pulse_1_output_color = 'k'
         pulse_1_input_color = lighten_color(pulse_1_output_color)

@@ -6,6 +6,7 @@ import numpy as np
 from collections.abc import Callable
 import matplotlib.colors as mc
 import colorsys
+from functools import wraps
 
 # ============================================================
 # Helper functions
@@ -281,3 +282,32 @@ def plot_modal_gain_minus_alpha(
     M = modal_gain(Ns, WLs) - alpha
 
     return plot_modal_gain_minus_alpha_mesh(Ns, WLs, M, title=title, show=show, outfile=outfile, figsize=figsize)
+
+# ============================================================
+# Plot pulse energy vs delta t
+# ============================================================
+
+@standard_x_vs_y_plot(default_title="Pulse energy vs. Δt", default_y_label="Energy [μJ]", default_x_label="Δt [ps]")
+def plot_energy_vs_delta_t( delta_t, energy, ax: Axes):
+    energy_uJ = np.array(energy)*1e6
+    print(energy)
+    print(energy_uJ)
+    print(delta_t)
+    print(delta_t_ps)
+    delta_t_ps = np.array(delta_t)*1e12
+    ax.plot(delta_t_ps, energy_uJ, marker='s')
+
+# ============================================================
+# Plot pulse peak power vs delta t
+# ============================================================
+
+@standard_x_vs_y_plot(default_title="Pulse peak power vs. Δt", default_y_label="Power [mWJ]", default_x_label="Δt [ps]")
+def plot_energy_vs_delta_t( delta_t, energy, ax: Axes):
+    energy_uJ = np.array(energy)*1e6
+    delta_t_ps = np.array(delta_t)*1e12
+    print(energy)
+    print(energy_uJ)
+    print(delta_t)
+    print(delta_t_ps)
+    ax.plot(delta_t_ps, energy_uJ, marker='s')
+
