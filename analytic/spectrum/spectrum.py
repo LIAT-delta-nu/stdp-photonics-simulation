@@ -47,7 +47,7 @@ class DiscreteSpectrum():
         self,
         signal_power : Callable[[float], float],
         spectral_position : float,
-    ) -> Callable[[float], float]:
+    ) -> Callable[[float], np.ndarray]:
         # Note: a local variable is used to force lambda to bind to N by value and not to self by reference
         # Therefore, if self.N changes, the lambda stays the same
         # Same goes for using i inside the lambda instead of calling self.get_index()

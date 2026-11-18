@@ -4,6 +4,8 @@ OUTDIR = "./out"
 import numpy as np
 from dataclasses import dataclass, field
 from collections import namedtuple
+from collections.abc import Callable
+from collections.abc import Callable
 from pathlib import Path
 from argparse import ArgumentParser
 from experiment_setup import ExperimentSetup, add_args_to_parser
@@ -88,7 +90,7 @@ class TwoPulsesSweepSoaSimulationParams(SoaSimulationParams):
         return self.pulse_2_t_peak_sweep[self.i]
 
     @property
-    def input_signals_forward_list(self):
+    def input_signals_forward_list(self) -> list[Callable[[float], np.ndarray]]:
         # Input signals
         ## Pulse 1
         pulses_forward = []
@@ -121,7 +123,7 @@ class TwoPulsesSweepSoaSimulationParams(SoaSimulationParams):
         return pulses_forward
 
     @property
-    def input_signals_backward_list(self):
+    def input_signals_backward_list(self) -> list[Callable[[float], np.ndarray]]:
         # Input signals
         ## Pulse 1
         pulses_backward = []
