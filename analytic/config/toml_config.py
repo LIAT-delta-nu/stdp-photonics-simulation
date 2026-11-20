@@ -13,7 +13,6 @@ def toml_config(section: str | None = None):
             path: str | Path,
             section: str | None = section,
         ) -> Self:
-            print(Path.cwd())
             with open(path, "rb") as f:
                 data = tomllib.load(f)
 

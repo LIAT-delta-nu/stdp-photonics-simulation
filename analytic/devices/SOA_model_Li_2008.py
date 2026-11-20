@@ -187,6 +187,22 @@ class SoaSimulationParams(ABC):
             self.Nlambda,
         )
 
+# ============================================================
+# SOA simulation results
+# ============================================================
+
+@dataclass
+class SoaSimulationResult():
+    t: np.ndarray
+    z: np.ndarray
+    n: np.ndarray
+    spectrum: np.ndarray
+    P_forward: np.ndarray
+    P_backward: np.ndarray
+
+# ============================================================
+# SOA simulation 
+# ============================================================
 
 @dataclass(init=False)
 class SoaSimulation():
@@ -240,7 +256,7 @@ class SoaSimulation():
         self.input_signals_forward_list = [no_signal] + sim_params.input_signals_forward_list.copy()
         self.input_signals_backward_list = [no_signal] + sim_params.input_signals_backward_list.copy()
 
-    def run(self):
+    def run(self) -> SoaSimulationResult:
         if DEBUG:
             start_1 = time.perf_counter()
         solution = solve_ivp(
@@ -255,20 +271,36 @@ class SoaSimulation():
             stop_1 = time.perf_counter()
             elapsed_1 = stop_1 - start_1
             print(f"solve_ivp execution time: {elapsed_1} seconds.")
-        return solution
+
+        t = solution.t
+        z = self.z
+        n = solution.y
+        spectrum = self.spectrum.spectrum
+        P_forward, P_backward = self.get_powers_from_solution(n, t)
+
+        results = SoaSimulationResult(
+            t=t,
+            z=z,
+            n=n,
+            spectrum=spectrum,
+            P_forward=P_forward,
+            P_backward=P_backward,
+        )
+        
+        return results
 
     def get_powers_from_solution(
             self,
             n : np.ndarray, 
-            t_eval : np.ndarray,
-        ) -> tuple[np.ndarray]:
+            t : np.ndarray,
+        ) -> tuple[np.ndarray, np.ndarray]:
 
         if DEBUG:
             start = time.perf_counter()
 
         power_backward_by_wavelength = np.array([
             self.propagate_power(t, n_, forward=False)
-            for n_, t in zip(n.T, t_eval)
+            for n_, t in zip(n.T, t)
         ])   #[t, z, wavelength]
 
         if DEBUG:
@@ -279,7 +311,7 @@ class SoaSimulation():
 
         power_forward_by_wavelength = np.array([
             self.propagate_power(t, n_, forward=True)
-            for n_, t in zip(n.T, t_eval)
+            for n_, t in zip(n.T, t)
         ])   #[t, z, wavelength]
 
         if DEBUG:
@@ -287,7 +319,7 @@ class SoaSimulation():
             elapsed = stop - start
             print(f"Forward propagation execution time: {elapsed} seconds.")
 
-        return power_forward_by_wavelength, power_backward_by_wavelength, power_forward_by_wavelength+power_backward_by_wavelength
+        return power_forward_by_wavelength, power_backward_by_wavelength
 
     # ============================================================
     # Carrier-density dynamics (based on Li et al 2008)

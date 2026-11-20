@@ -7,6 +7,7 @@ from collections.abc import Callable
 import matplotlib.colors as mc
 import colorsys
 from functools import wraps
+from matplotlib.lines import Line2D
 
 # ============================================================
 # Helper functions
@@ -346,10 +347,6 @@ def plot_modal_gain_minus_alpha(
 @standard_x_vs_y_plot(default_title="Pulse energy vs. Δt", default_y_label="Energy [μJ]", default_x_label="Δt [ps]")
 def plot_energy_vs_delta_t( delta_t, energy, ax: Axes):
     energy_uJ = np.array(energy)*1e6
-    print(energy)
-    print(energy_uJ)
-    print(delta_t)
-    print(delta_t_ps)
     delta_t_ps = np.array(delta_t)*1e12
     ax.plot(delta_t_ps, energy_uJ, marker='s')
 
@@ -358,12 +355,163 @@ def plot_energy_vs_delta_t( delta_t, energy, ax: Axes):
 # ============================================================
 
 @standard_x_vs_y_plot(default_title="Pulse peak power vs. Δt", default_y_label="Power [mWJ]", default_x_label="Δt [ps]")
-def plot_energy_vs_delta_t( delta_t, energy, ax: Axes):
+def plot_energy_vs_delta_t(delta_t, energy, ax: Axes):
     energy_uJ = np.array(energy)*1e6
     delta_t_ps = np.array(delta_t)*1e12
-    print(energy)
-    print(energy_uJ)
-    print(delta_t)
-    print(delta_t_ps)
     ax.plot(delta_t_ps, energy_uJ, marker='s')
 
+@standard_x_vs_y_plot(default_y_label='Power [W]', default_x_label='time [ps]')
+def plot_input_output(
+    input : np.ndarray, 
+    output : np.ndarray,  
+    t : np.ndarray, 
+    ax : Axes = None,
+):
+
+    plot_signal_output(
+        t,
+        input,
+        label="Input",
+        # outfile=save_dir / "forward_input_output.svg",
+        ax=ax,
+        show=False,
+    )
+    plot_signal_output(
+        t,
+        output,
+        label="Output",
+        # outfile=save_dir / "forward_input_output.svg",
+        ax=ax,
+        show=False,
+    )
+
+@standard_x_vs_y_plot(default_y_label='Power [W]', default_x_label='time [ps]', default_title='2 pulses input and output powers')
+def plot_2_pulses(
+    input_power_pulse_1 : np.ndarray,
+    output_power_pulse_1 : np.ndarray,
+    input_power_pulse_2 : np.ndarray,
+    output_power_pulse_2 : np.ndarray,
+    t : np.ndarray,
+    ax : Axes = None,
+):
+    # Forward input and output filtered at pulses wavelengths
+    pulse_1_output_color = 'b'
+    pulse_1_input_color = lighten_color(pulse_1_output_color)
+    pulse_2_output_color = 'r'
+    pulse_2_input_color = lighten_color(pulse_2_output_color)
+    input_linestyle = '--'
+    output_linestyle = '-'
+    plot_signal_output(
+        t,
+        input_power_pulse_1,
+        label="Input pulse 1",
+        # outfile=save_dir / "forward_input_output.svg",
+        linestyle=input_linestyle,
+        color=pulse_1_input_color,
+        ax=ax,
+        show=False,
+    )
+
+    plot_signal_output(
+        t,
+        output_power_pulse_1,
+        ax=ax,
+        label="Output pulse 1",
+        # outfile=save_dir / "forward_input_output.svg",
+        color=pulse_1_output_color,
+        linestyle=output_linestyle,
+        show=False,
+    )
+
+    plot_signal_output(
+        t,
+        input_power_pulse_2,
+        ax=ax,
+        label="Input pulse 2",
+        # outfile=save_dir / "forward_input_output.svg",
+        linestyle=input_linestyle,
+        color=pulse_2_input_color,
+        show=False,
+    )
+
+    plot_signal_output(
+        t,
+        output_power_pulse_2,
+        ax=ax,
+        label="Output pulse 2",
+        title="",
+        color=pulse_2_output_color,
+        linestyle=output_linestyle,
+        show=False,
+    )
+
+@standard_x_vs_y_plot(default_y_label='Power [W]', default_x_label='time [ps]', default_title='2 pulses input and output powers')
+def plot_pulse_2_delta_t_sweep(
+    ts_minus_t1: list[np.ndarray],
+    output_powers_pulse_2: list[np.ndarray], 
+    delta_t_peaks: list[float],
+    ax : Axes = None,
+):
+    # Forward input and output filtered at pulses wavelengths
+    t_peak_1_linestyle = '--'
+    t_peak_2_linestyle = ':'
+
+    t_peak_1_linewidth = 1.5
+    t_peak_2_linewidth = 1.5
+    
+    pulse_1_color = 'k'
+
+    output_linestyle = '-'
+
+    ax.axvline(0, color=pulse_1_color, linewidth=t_peak_1_linewidth, linestyle=t_peak_1_linestyle)
+
+    input_output_handles = [
+        Line2D([0], [0], color=pulse_1_color, linestyle=t_peak_1_linestyle, linewidth=t_peak_1_linewidth, label="t_peak pulse 1"),
+        Line2D([0], [0], color='k', linestyle=t_peak_2_linestyle, linewidth=t_peak_2_linewidth, label="t_peak pulse 2"),
+    ]
+
+    legend_input_output = ax.legend(
+        handles=input_output_handles,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+    )
+    # Preserve the first legend
+    ax.add_artist(legend_input_output)
+
+    delta_t_handles = []
+
+    for i, (
+            t_minus_t1, 
+            output_power_pulse_2, 
+            delta_t_peak
+        ) in enumerate(zip(
+            ts_minus_t1,
+            output_powers_pulse_2, 
+            delta_t_peaks,
+        )
+    ):
+        color_idx = i % 10
+        pulse_2_output_color = f'C{color_idx}'
+        
+        delta_t_handles.append(
+            Line2D([0], [0], color=pulse_2_output_color, lw=t_peak_2_linewidth, label=f"Δt={delta_t_peak*1e12:.0f} ps")
+        )
+        plot_signal_output(
+            t_minus_t1,
+            output_power_pulse_2,
+            ax=ax,
+            # label=f"Pulse 2 output (Δt_peak={delta_t_peak*1e12:.0f} ps)",
+            # outfile=save_dir / "forward_input_output.svg",
+            linestyle=output_linestyle,
+            color=pulse_2_output_color,
+            show=False,
+        )
+        ax.axvline(x=delta_t_peak*1e12, color=pulse_2_output_color, linewidth=t_peak_2_linewidth, linestyle=t_peak_2_linestyle)
+    
+    ax.legend(
+        handles=delta_t_handles,
+        loc="lower left",
+        bbox_to_anchor=(1.02, 0.0),
+    )
+
+    ax.figure.tight_layout()

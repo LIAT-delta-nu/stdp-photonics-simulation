@@ -4,18 +4,22 @@ from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
 import copy
+import numpy as np
 
 from devices import (
     SoaConditions,
     SoaMaterial,
     SoaDimensions,
-    SoaSimulationParams
+    SoaSimulationParams,
+    SoaSimulationResult,
 )
+
+from results_manager import load_soa_sim_result
 
 @dataclass
 class ExperimentSetup:
 
-    run_name: str
+    full_run_name: str
     timestamp: str
     sim_type_name: str
 
@@ -27,13 +31,8 @@ class ExperimentSetup:
     soa_dims: dict[str, SoaDimensions]
     sim_params: dict[str, SoaSimulationParams]
 
-    @property
-    def full_run_name(self):
-        return (
-            f"{self.timestamp}__{self.sim_type_name}__{self.run_name}"
-            if self.run_name
-            else f"{self.timestamp}__{self.sim_type_name}"
-        )
+    sim_data_dir : Path | str | None
+    process : bool
 
     @classmethod
     def from_args(
@@ -41,13 +40,11 @@ class ExperimentSetup:
         args,
         sim_params_class: type[SoaSimulationParams],
         cases_if_missing: list[str],
+        timestamp=None,
     ) -> ExperimentSetup:
 
-        # Run name
-        run_name = args.run_name or input(
-            "Enter run name and press enter "
-            "(if no run name is wanted just press enter):\n"
-        )
+        sim_data_dir = args.sim_data_dir
+        process = not args.no_processing
 
         # Cases
         cases = list(dict.fromkeys(args.cases or cases_if_missing))
@@ -127,12 +124,25 @@ class ExperimentSetup:
         sim_params["default"] = sim_params[default_case]
 
         # Timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if not timestamp:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        sim_type_name=sim_params["default"].sim_type_name
+
+        # Full run name
+        if sim_data_dir:
+            full_run_name = Path(sim_data_dir).name
+        elif args.run_name:
+            full_run_name = f"{timestamp}__{sim_type_name}__{args.run_name}"
+        else:
+            full_run_name = f"{timestamp}__{sim_type_name}"
 
         return cls(
-            run_name=run_name,
+            full_run_name=full_run_name,
             timestamp=timestamp,
-            sim_type_name=sim_params["default"].sim_type_name,
+            sim_type_name=sim_type_name,
+            sim_data_dir=sim_data_dir,
+            process=process,
             cases=cases,
             default_case=default_case,
             soa_conditions=soa_conditions,
@@ -140,6 +150,97 @@ class ExperimentSetup:
             soa_dims=soa_dims,
             sim_params=sim_params,
         )
+
+    def update_from_dir(
+        self, 
+        sim_params_class: type[SoaSimulationParams],
+        filename : str = 'config.toml',
+    ):
+        load_sim_and_soa_configs_from_dir(
+            self.sim_data_dir, 
+            sim_params_class,
+            self.sim_params,
+            self.soa_conditions,
+            self.soa_material,
+            self.soa_dims,
+            filename,
+        )
+
+def load_sim_and_soa_configs_from_dir(
+    outdir: Path,
+    sim_params_class: type[SoaSimulationParams],
+    sim_params : dict[str, SoaSimulationParams],
+    soa_conditions : dict[str, SoaConditions],
+    soa_material : dict[str, SoaMaterial],
+    soa_dims : dict[str, SoaDimensions],
+    filename : str = 'config.toml',
+):
+
+    for case_dir in sorted(outdir.iterdir()):
+
+        data_file = case_dir / filename
+
+        if not case_dir.is_dir() or not data_file.is_file():
+            continue
+
+        sim_params[case_dir.name] = sim_params_class.from_toml(data_file)
+        soa_material[case_dir.name] = SoaMaterial.from_toml(data_file)
+        soa_dims[case_dir.name] = SoaDimensions.from_toml(data_file)
+        soa_conditions[case_dir.name] = SoaConditions.from_toml(data_file)
+
+
+def load_simulation_results_from_dir(
+    outdir: Path,
+    filename : str = 'soa_sim_results.npz',
+) -> dict[str, dict[str, SoaSimulationResult]]:
+
+    results = {}
+
+    for case_dir in sorted(outdir.iterdir()):
+
+        if not case_dir.is_dir():
+            continue
+
+        case_results = {}
+        for run_dir in sorted(case_dir.iterdir()):
+
+            data_file = run_dir / filename
+            if not run_dir.is_dir() or not data_file.is_file():
+                continue
+
+            case_results[run_dir.name] = load_soa_sim_result(run_dir, filename=filename)
+
+        if case_results:
+            results[case_dir.name] = case_results
+
+    return results
+
+
+def get_simulation_processed_output_dirs(
+    outdir: Path,
+    filename : str = 'soa_sim_results.npz',
+) -> dict[str, list[Path]]:
+
+    results = {}
+
+    for case_dir in sorted(outdir.iterdir()):
+
+        if not case_dir.is_dir():
+            continue
+
+        case_results = []
+        for run_dir in sorted(case_dir.iterdir()):
+
+            data_file = run_dir / filename
+            if not run_dir.is_dir() or not data_file.is_file():
+                continue
+
+            case_results.append(load_soa_sim_result(run_dir, filename=filename))
+
+        if case_results:
+            results[case_dir.name] = case_results
+
+    return results
 
 
 def add_args_to_parser(parser:ArgumentParser, sim_params_class: type[SoaSimulationParams]):
@@ -171,3 +272,18 @@ def add_args_to_parser(parser:ArgumentParser, sim_params_class: type[SoaSimulati
     for c in [sim_params_class, SoaMaterial, SoaDimensions, SoaConditions]:
         c.add_cli_args_to_parser(parser)
 
+    parser.add_argument(
+        "--sim-data-dir",
+        type=Path,
+        default=None,
+        help="Directory containing previously generated simulation data. "
+             "If present, simulation is skipped and the data stored in this dir is processed.",
+    )
+
+    parser.add_argument(
+        "--no-processing",
+        action='store_true',
+        help="Skip the processing of the simulation data.",
+    )
+
+    

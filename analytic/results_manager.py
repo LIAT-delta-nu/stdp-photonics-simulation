@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from devices import SoaDimensions, SoaConditions, SoaMaterial, SoaSimulationParams
+from devices import SoaDimensions, SoaConditions, SoaMaterial, SoaSimulationParams, SoaSimulationResult
 import csv
 from collections.abc import Sequence
 
@@ -30,18 +30,16 @@ def load_pulse_measurements(
     return pulse_measurements
 
 def save_pulse_measurements(
-    pulse_measurements: Sequence[dict[str, float | str]],
+    pulse_measurements: dict[str, dict[str, float | str]],
     save_dir: Path | str,
     filename,
-    signals_names: Sequence[str] | None = None,
 ):
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    signals_names = complete_signal_names(signals_names, len(pulse_measurements), prefix="pulse")
-
     pulse_measurements_with_name = [
-        {"name": name} | measurement for name, measurement in zip(signals_names, pulse_measurements)
+        {"name": single_pulse_name} | single_pulse_measurements
+        for single_pulse_name, single_pulse_measurements in pulse_measurements.items()
     ]
 
     fieldnames = pulse_measurements_with_name[0].keys()
@@ -462,6 +460,59 @@ def save_t_and_z(
         delimiter=',',
     )
 
+
+###
+### SoaSimulationResult
+###
+
+# Saves .npz
+def save_soa_sim_result(
+    result : SoaSimulationResult,
+    save_dir: Path | str,
+    t_label: str = "t_s",
+    z_label: str = "z_m",
+    n_label: str = "n_m-3",
+    spectrum_label: str = "spectrum_nm",
+    P_forward_label: str = "P_forward_W",
+    P_backward_label: str = "P_backward_W",
+    filename = "soa_sim_results.npz",
+):
+    data_dict = {
+        t_label: result.t, 
+        z_label: result.z, 
+        n_label: result.n, 
+        spectrum_label: result.spectrum, 
+        P_forward_label: result.P_forward,
+        P_backward_label: result.P_backward,
+    }
+    np.savez(
+        save_dir / f"{filename}",
+        **data_dict,
+    )
+
+
+def load_soa_sim_result(
+    save_dir: Path | str,
+    t_label: str = "t_s",
+    z_label: str = "z_m",
+    n_label: str = "n_m-3",
+    spectrum_label: str = "spectrum_nm",
+    P_forward_label: str = "P_forward_W",
+    P_backward_label: str = "P_backward_W",
+    filename: str = "soa_sim_results.npz",
+) -> SoaSimulationResult:
+
+    with np.load(Path(save_dir) / filename) as data:
+
+        return SoaSimulationResult(
+            t=data[t_label],
+            z=data[z_label],
+            n=data[n_label],
+            spectrum=data[spectrum_label],
+            P_forward=data[P_forward_label],
+            P_backward=data[P_backward_label],
+        )
+
 ###
 ### configs
 ###
@@ -508,3 +559,19 @@ def complete_signal_names(
         f"{prefix}_{i + 1}"
         for i in range(len(names), n_items)
     )
+
+
+def create_processed_dir(parent_dir: Path | str) -> Path:
+
+    parent_dir = Path(parent_dir)
+
+    processed_dir = parent_dir / "processed"
+
+    i = 1
+    while processed_dir.exists():
+        processed_dir = parent_dir / f"processed_{i:02d}"
+        i += 1
+
+    processed_dir.mkdir()
+
+    return processed_dir

@@ -1,0 +1,1 @@
+from spectrum.spectrum import DiscreteSpectrum
