@@ -263,14 +263,21 @@ def add_args_to_parser(parser:ArgumentParser, sim_params_class: type[SoaSimulati
         type=str,
         default=None,
     )
-    parser.add_argument("--config-file", type=Path, default="./sim_configs/SOA_simulation_Li_2008.toml")
-    parser.add_argument("--soa-conditions-file", type=Path, default=None)
-    parser.add_argument("--soa-material-file", type=Path, default=None)
-    parser.add_argument("--soa-dims-file", type=Path, default=None)
-    parser.add_argument("--sim-params-file", type=Path, default=None)
 
-    for c in [sim_params_class, SoaMaterial, SoaDimensions, SoaConditions]:
-        c.add_cli_args_to_parser(parser)
+    soa_configs_arg_group = parser.add_argument_group("SOA configurations", "Arguments to configure the SOA characteristics and working conditions (these args override the config files values).")
+    sim_params_arg_group = parser.add_argument_group("Simulation configurations", "Arguments to control the simulation, such as spatial and spectral discretization, numer of pulses in sweep, pulse wavelengths, and more (these args override the config files values).")
+    config_files_arg_group = parser.add_argument_group("Config files")
+
+    config_files_arg_group.add_argument("--config-file", type=Path, default="./sim_configs/SOA_simulation_Li_2008.toml")
+    config_files_arg_group.add_argument("--soa-conditions-file", type=Path, default=None)
+    config_files_arg_group.add_argument("--soa-material-file", type=Path, default=None)
+    config_files_arg_group.add_argument("--soa-dims-file", type=Path, default=None)
+    config_files_arg_group.add_argument("--sim-params-file", type=Path, default=None)
+
+    for c in [SoaMaterial, SoaDimensions, SoaConditions]:
+        c.add_cli_args_to_parser(soa_configs_arg_group)
+
+    sim_params_class.add_cli_args_to_parser(sim_params_arg_group)
 
     parser.add_argument(
         "--sim-data-dir",
@@ -283,7 +290,7 @@ def add_args_to_parser(parser:ArgumentParser, sim_params_class: type[SoaSimulati
     parser.add_argument(
         "--no-processing",
         action='store_true',
-        help="Skip the processing of the simulation data.",
+        help="If present, the processing of the simulation data is ommitted.",
     )
 
     

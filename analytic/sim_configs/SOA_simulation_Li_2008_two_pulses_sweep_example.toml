@@ -28,7 +28,7 @@ d=65.7e-9    # No esta en el paper directamente. Elegido tal que la probe gain s
 
 [case_a.soa_sim_params]
 # Spatial and spectral discretization
-Nz=10
+Nz=21
 Nlambda = 101
 # Simulation time
 t_start = 0.0
@@ -52,3 +52,35 @@ pulse_2_forward = true
 pulse_2_t_peak_min = 300e-12
 pulse_2_t_peak_max = 1000e-12
 pulse_2_t_peak_N = 8
+
+[case_b]
+[case_b.soa_conditions]
+I=52e-3
+
+[case_b.soa_material]
+
+[case_b.soa_dimensions]
+
+[case_b.soa_sim_params]
+
+
+[case_c]
+[case_c.soa_conditions]
+I=22e-3
+
+[case_c.soa_material]
+
+[case_c.soa_dimensions]
+
+[case_c.soa_sim_params]
+
+
+[case_d]
+[case_d.soa_conditions]
+I=0
+
+[case_d.soa_material]
+
+[case_d.soa_dimensions]
+
+[case_d.soa_sim_params]
