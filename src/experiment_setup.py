@@ -16,6 +16,8 @@ from devices import (
 
 from results_manager import load_soa_sim_result
 
+DEFAULT_OUTDIR = "./out"
+
 @dataclass
 class ExperimentSetup:
 
@@ -32,6 +34,7 @@ class ExperimentSetup:
     sim_params: dict[str, SoaSimulationParams]
 
     sim_data_dir : Path | str | None
+    outdir : Path | str | None
     process : bool
 
     @classmethod
@@ -45,6 +48,22 @@ class ExperimentSetup:
 
         sim_data_dir = args.sim_data_dir
         process = not args.no_processing
+        outdir = args.outdir
+
+        # output directory is defined by the following configs:
+        # - 1. outdir cli argument (highest priority)
+        # - 2. sim_data_dir parent directory, if sim_data_dir is passed as cli argument
+        # - 3. Directory specified in DEFAULT_OUTDIR variable
+
+        if outdir is None:
+            outdir = Path(DEFAULT_OUTDIR)
+
+        if sim_data_dir:
+            sim_data_dir = Path(sim_data_dir)
+            outdir = sim_data_dir.parent
+
+        if outdir:
+            outdir = Path(outdir)
 
         # Cases
         cases = list(dict.fromkeys(args.cases or cases_if_missing))
@@ -260,6 +279,12 @@ def add_args_to_parser(parser:ArgumentParser, sim_params_class: type[SoaSimulati
 
     parser.add_argument(
         "--default-case",
+        type=str,
+        default=None,
+    )
+
+    parser.add_argument(
+        "--outdir",
         type=str,
         default=None,
     )

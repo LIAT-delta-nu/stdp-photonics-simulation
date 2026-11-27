@@ -1,5 +1,4 @@
 DEBUG = True
-OUTDIR = "./out"
 
 import numpy as np
 from dataclasses import dataclass, field
@@ -8,9 +7,6 @@ from collections.abc import Callable
 from pathlib import Path
 from argparse import ArgumentParser
 import copy
-if DEBUG:
-    import time
-
 
 from experiment_setup import ExperimentSetup, add_args_to_parser, load_simulation_results_from_dir
 from spectrum import DiscreteSpectrum
@@ -199,7 +195,7 @@ def simulate(exp_setup : ExperimentSetup) -> dict[str, dict[str, SoaSimulationRe
         soa_dims = exp_setup.soa_dims[case]
         sim_params_base = exp_setup.sim_params[case]
 
-        save_dir = Path(OUTDIR) / exp_setup.full_run_name / case 
+        save_dir = exp_setup.outdir / exp_setup.full_run_name / case 
         save_configs(soa_conditions, soa_material, soa_dims, sim_params_base, save_dir)
 
         #########################################
@@ -252,7 +248,7 @@ def simulate(exp_setup : ExperimentSetup) -> dict[str, dict[str, SoaSimulationRe
             # Save and return simulation results             #
             ##################################################
 
-            save_dir = Path(OUTDIR) / exp_setup.full_run_name / case / single_run_name
+            save_dir = exp_setup.outdir / exp_setup.full_run_name / case / single_run_name
             save_dir.mkdir(parents=True, exist_ok=True)
             save_soa_sim_result(sim_result_main, save_dir=save_dir)
 
@@ -281,7 +277,7 @@ def process(exp_setup : ExperimentSetup, results : dict[str, list[SoaSimulationR
         case_pulse_powers : dict[str, dict[str,np.ndarray]] = {}                 # case_pulse_powers[single_run_name][pulse_signal_name]
         case_t : dict[str,np.ndarray] = {}                                       # case_t[single_run_name]
 
-        case_save_dir = Path(OUTDIR) / exp_setup.full_run_name / case
+        case_save_dir = exp_setup.outdir / exp_setup.full_run_name / case
 
         for i, (single_run_name, result) in enumerate(case_results.items()):
             sim_params = copy.copy(sim_params_base)
