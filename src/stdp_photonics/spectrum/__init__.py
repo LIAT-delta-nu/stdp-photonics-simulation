@@ -1,0 +1,1 @@
+from stdp_photonics.spectrum.spectrum import DiscreteSpectrum

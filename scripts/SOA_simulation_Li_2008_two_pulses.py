@@ -1,4 +1,4 @@
-DEBUG = True
+VERBOSE = True
 OUTDIR = "./out"
 
 import numpy as np
@@ -9,18 +9,17 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from argparse import ArgumentParser
-if DEBUG:
+if VERBOSE:
     import time
 
-from config import toml_config
-from config import cli_config
+from stdp_photonics.config import toml_config, cli_config
 import copy
 # import devices.SOA_model_Li_2008 as soa
-from devices import SoaSimulationParams, SoaMaterial, SoaConditions, SoaSimulation, SoaDimensions
-from devices.SOA_model_Li_2008 import soa_propagate_power
-import signals.signals as signals
-from spectrum.spectrum import DiscreteSpectrum
-from plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha, lighten_color
+from stdp_photonics.devices import SoaSimulationParams, SoaMaterial, SoaConditions, SoaSimulation, SoaDimensions
+from stdp_photonics.devices.SOA_model_Li_2008 import soa_propagate_power
+import stdp_photonics.signals.signals as signals
+from stdp_photonics.spectrum.spectrum import DiscreteSpectrum
+from stdp_photonics.plots import plot_carrier_density, plot_probe_gain_dB, plot_signal_output, plot_modal_gain_minus_alpha, lighten_color
 
 # Cases to be run (can be overriden through cli)
 # Each case name corresponds to a toml table in a toml file with the follwing subtables:
@@ -198,7 +197,7 @@ def main():
     cases = list(dict.fromkeys(cases))  # Remove duplicates, preserving order
 
     for case in cases:
-        if DEBUG:
+        if VERBOSE:
             print(case)
 
         # First, simulate SOA propagation of only the probe to find the initial condition of the main simulation
@@ -265,7 +264,7 @@ def main():
         n = solution_sim_main.y
         t_eval = solution_sim_main.t
 
-        if DEBUG:
+        if VERBOSE:
             start = time.perf_counter()
 
         input_signal_backward = sim_main.input_signal_backward
@@ -287,7 +286,7 @@ def main():
 
         output_power_backward = np.sum(output_power_backward_by_wavelength, axis=1)
 
-        if DEBUG:
+        if VERBOSE:
             stop = time.perf_counter()
             elapsed = stop - start
             print(f"Backward propagation execution time: {elapsed} seconds.")
@@ -311,7 +310,7 @@ def main():
             axis=1
         )
 
-        if DEBUG:
+        if VERBOSE:
             stop = time.perf_counter()
             elapsed = stop - start
             print(f"Forward propagation execution time: {elapsed} seconds.")

@@ -1,0 +1,19 @@
+[project]
+name = "stdp_photonics"
+version = "0.1.0"
+description = "STDP simulation with photonic components"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib>=3.11",
+    "numpy>=2.5",
+    "scipy>=1.18",
+    "tomli_w>=1.2",
+]
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

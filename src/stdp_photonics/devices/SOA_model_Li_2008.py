@@ -1,12 +1,12 @@
-DEBUG = True
+VERBOSE = True
 
 from abc import ABC, abstractmethod
 import numpy as np
 from collections.abc import Callable
 from dataclasses import dataclass, astuple
-from config.toml_config import toml_config
-from config.cli_config import cli_config
-from spectrum.spectrum import DiscreteSpectrum
+from stdp_photonics.config.toml_config import toml_config
+from stdp_photonics.config.cli_config import cli_config
+from stdp_photonics.spectrum.spectrum import DiscreteSpectrum
 from scipy.integrate import solve_ivp
 import time
 
@@ -257,7 +257,7 @@ class SoaSimulation():
         self.input_signals_backward_list = [no_signal] + sim_params.input_signals_backward_list.copy()
 
     def run(self) -> SoaSimulationResult:
-        if DEBUG:
+        if VERBOSE:
             start_1 = time.perf_counter()
         solution = solve_ivp(
             fun=self.dn_dt,
@@ -267,7 +267,7 @@ class SoaSimulation():
             rtol=1e-10,
             atol=1e0,
         )
-        if DEBUG:
+        if VERBOSE:
             stop_1 = time.perf_counter()
             elapsed_1 = stop_1 - start_1
             print(f"solve_ivp execution time: {elapsed_1} seconds.")
@@ -295,7 +295,7 @@ class SoaSimulation():
             t : np.ndarray,
         ) -> tuple[np.ndarray, np.ndarray]:
 
-        if DEBUG:
+        if VERBOSE:
             start = time.perf_counter()
 
         power_backward_by_wavelength = np.array([
@@ -303,7 +303,7 @@ class SoaSimulation():
             for n_, t in zip(n.T, t)
         ])   #[t, z, wavelength]
 
-        if DEBUG:
+        if VERBOSE:
             stop = time.perf_counter()
             elapsed = stop - start
             print(f"Backward propagation execution time: {elapsed} seconds.")
@@ -314,7 +314,7 @@ class SoaSimulation():
             for n_, t in zip(n.T, t)
         ])   #[t, z, wavelength]
 
-        if DEBUG:
+        if VERBOSE:
             stop = time.perf_counter()
             elapsed = stop - start
             print(f"Forward propagation execution time: {elapsed} seconds.")

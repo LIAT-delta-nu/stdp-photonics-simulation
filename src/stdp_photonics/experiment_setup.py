@@ -6,7 +6,7 @@ from datetime import datetime
 import copy
 import numpy as np
 
-from devices import (
+from stdp_photonics.devices import (
     SoaConditions,
     SoaMaterial,
     SoaDimensions,
@@ -14,7 +14,7 @@ from devices import (
     SoaSimulationResult,
 )
 
-from results_manager import load_soa_sim_result
+from stdp_photonics.results_manager import load_soa_sim_result
 
 DEFAULT_OUTDIR = "./out"
 
@@ -161,6 +161,7 @@ class ExperimentSetup:
             timestamp=timestamp,
             sim_type_name=sim_type_name,
             sim_data_dir=sim_data_dir,
+            outdir=outdir,
             process=process,
             cases=cases,
             default_case=default_case,

@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from devices.SOA_model_Li_2008 import SoaMaterial
-from plots import plot_modal_gain_minus_alpha_mesh, plot_modal_gain_minus_alpha_sign_mesh
+from stdp_photonics.devices.SOA_model_Li_2008 import SoaMaterial
+from stdp_photonics.plots import plot_modal_gain_minus_alpha_mesh, plot_modal_gain_minus_alpha_sign_mesh
 
 
 DEFAULT_CASE = "case_a"

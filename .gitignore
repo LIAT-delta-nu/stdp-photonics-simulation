@@ -1,3 +1,6 @@
 **/__pycache__/**
 *.png
 **/out/
+**/out_2/
+.vscode/
+**.egg-info

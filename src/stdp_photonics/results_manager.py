@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from devices import SoaDimensions, SoaConditions, SoaMaterial, SoaSimulationParams, SoaSimulationResult
+from stdp_photonics.devices import SoaDimensions, SoaConditions, SoaMaterial, SoaSimulationParams, SoaSimulationResult
 import csv
 from collections.abc import Sequence
 

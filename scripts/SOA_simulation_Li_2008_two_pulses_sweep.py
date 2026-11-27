@@ -1,4 +1,4 @@
-DEBUG = True
+VERBOSE = True
 
 import numpy as np
 from dataclasses import dataclass, field
@@ -8,9 +8,9 @@ from pathlib import Path
 from argparse import ArgumentParser
 import copy
 
-from experiment_setup import ExperimentSetup, add_args_to_parser, load_simulation_results_from_dir
-from spectrum import DiscreteSpectrum
-from results_manager import (
+from stdp_photonics.experiment_setup import ExperimentSetup, add_args_to_parser, load_simulation_results_from_dir
+from stdp_photonics.spectrum import DiscreteSpectrum
+from stdp_photonics.results_manager import (
     save_configs,
     save_soa_sim_result,
     save_pulse_measurements,
@@ -18,11 +18,10 @@ from results_manager import (
 )
 
 
-from config import toml_config
-from config import cli_config
-from devices import SoaSimulationParams, SoaSimulationResult, SoaSimulation
-import signals.signals as signals
-from plots import (
+from stdp_photonics.config import toml_config, cli_config
+from stdp_photonics.devices import SoaSimulationParams, SoaSimulationResult, SoaSimulation
+import stdp_photonics.signals.signals as signals
+from stdp_photonics.plots import (
     plot_carrier_density, 
     plot_probe_gain_dB, 
     plot_input_output,
@@ -185,7 +184,7 @@ def simulate(exp_setup : ExperimentSetup) -> dict[str, dict[str, SoaSimulationRe
     results : dict[str, dict[str, SoaSimulationResult]] = {}
     
     for case in exp_setup.cases:
-        if DEBUG:
+        if VERBOSE:
             print(f"{case}: running simulation")
 
         results[case] = {}
@@ -258,7 +257,7 @@ def simulate(exp_setup : ExperimentSetup) -> dict[str, dict[str, SoaSimulationRe
 def process(exp_setup : ExperimentSetup, results : dict[str, list[SoaSimulationResult]]):
 
     for case, case_results in results.items():
-        if DEBUG:
+        if VERBOSE:
             print(f"{case}: processing")
 
         ##############################################################
