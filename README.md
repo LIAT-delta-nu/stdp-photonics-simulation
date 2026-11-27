@@ -4,6 +4,8 @@ _NOTE: The simulation scripts, written in Python, should be cross-platform, but 
 
 _NOTE: All simulations scripts where developed and tested using Python 3.15. They may or may not work as intended using other Python versions._
 
+Simulation of time difference detection and weight update calculation for neural networks implemented in photonic hardware.
+
 ## Installation
 
 It is not necessary but strongly recommended to install the project in a virtual environment.
